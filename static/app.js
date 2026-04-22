@@ -2,6 +2,8 @@
    Audio Transcriber — Main SPA
    ========================================================== */
 
+document.body.insertAdjacentHTML('afterbegin', '<div class="bg-orbs" aria-hidden="true"></div>');
+
 'use strict';
 
 // ── Theme ────────────────────────────────────────────────
@@ -148,13 +150,11 @@ function resetProgress() {
 buildTimeline();
 
 // ── Stop button ───────────────────────────────────────────
-stopBtn.addEventListener('click', async () => {
+stopBtn.addEventListener('click', () => {
   if (!activeJobId) return;
   stopBtn.disabled = true;
   stopBtn.textContent = 'Stopping …';
-  try {
-    await fetch(`/api/jobs/${activeJobId}/cancel`, { method: 'POST' });
-  } catch {}
+  fetch(`/api/jobs/${activeJobId}/cancel`, { method: 'POST' }).catch(() => {});
 });
 
 // ── Transcription job ─────────────────────────────────────
@@ -434,11 +434,29 @@ function renderViewer(meta, markdown) {
 
 document.getElementById('back-to-library-btn').addEventListener('click', () => showTab('library'));
 
-document.getElementById('copy-md-btn').addEventListener('click', async () => {
+function _fallbackCopy(text) {
   try {
-    await navigator.clipboard.writeText(_currentMarkdown);
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
     toast('Copied to clipboard', 'success');
   } catch { toast('Copy failed', 'error'); }
+}
+
+document.getElementById('copy-md-btn').addEventListener('click', () => {
+  const text = _currentMarkdown;
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text)
+      .then(() => toast('Copied to clipboard', 'success'))
+      .catch(() => _fallbackCopy(text));
+  } else {
+    _fallbackCopy(text);
+  }
 });
 
 document.getElementById('download-md-btn').addEventListener('click', () => {
@@ -446,18 +464,22 @@ document.getElementById('download-md-btn').addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `${_currentResultId}.md`;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
 });
 
-document.getElementById('delete-tx-btn').addEventListener('click', async () => {
+document.getElementById('delete-tx-btn').addEventListener('click', () => {
   if (!_currentResultId) return;
   if (!confirm(`Delete transcription "${_currentResultId}"?`)) return;
-  try {
-    await fetch(`/api/transcriptions/${_currentResultId}`, { method: 'DELETE' });
-    toast('Deleted', 'success');
-    document.getElementById('viewer-tab-btn').style.display = 'none';
-    showTab('library');
-  } catch { toast('Delete failed', 'error'); }
+  fetch(`/api/transcriptions/${_currentResultId}`, { method: 'DELETE' })
+    .then(() => {
+      toast('Deleted', 'success');
+      document.getElementById('viewer-tab-btn').style.display = 'none';
+      showTab('library');
+    })
+    .catch(() => toast('Delete failed', 'error'));
 });
 
 // ── Settings ──────────────────────────────────────────────
@@ -515,7 +537,7 @@ function renderModelCards(hw, selected, modelStatus = {}) {
       ? `<span class="model-dl-badge downloaded">✓ Downloaded${ms.size_mb ? ` · ${ms.size_mb} MB` : ''}</span>`
       : `<span class="model-dl-badge">Not downloaded</span>`;
     const delBtn = ms.downloaded
-      ? `<button class="model-del-btn" data-model="${name}" title="Delete model files">Delete</button>`
+      ? `<button type="button" class="model-del-btn" data-model="${name}" title="Delete model files">Delete</button>`
       : '';
     return `
       <div class="model-card ${isSelected ? 'selected' : ''} ${isRec ? 'recommended' : ''}"
@@ -542,25 +564,25 @@ function renderModelCards(hw, selected, modelStatus = {}) {
   });
 
   container.querySelectorAll('.model-del-btn').forEach(btn => {
-    btn.addEventListener('click', async e => {
+    btn.addEventListener('click', e => {
       e.stopPropagation();
       const modelName = btn.dataset.model;
       if (!confirm(`Delete downloaded files for "${modelName}"?\nYou will need to re-download before using it.`)) return;
       btn.disabled = true;
       btn.textContent = 'Deleting…';
-      try {
-        const res = await fetch(`/api/models/${modelName}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error(await res.text());
-        toast(`Model "${modelName}" deleted`, 'success');
-        // Refresh model cards
-        const [hwRes, modelsRes] = await Promise.all([fetch('/api/hardware'), fetch('/api/models')]);
-        const newModels = await modelsRes.json();
-        renderModelCards(_hwData, _selectedModel, newModels);
-      } catch (err) {
-        toast('Delete failed: ' + err.message, 'error');
-        btn.disabled = false;
-        btn.textContent = 'Delete';
-      }
+      fetch(`/api/models/${modelName}`, { method: 'DELETE' })
+        .then(res => res.ok ? res : res.text().then(t => { throw new Error(t); }))
+        .then(() => {
+          toast(`Model "${modelName}" deleted`, 'success');
+          return Promise.all([fetch('/api/hardware'), fetch('/api/models')]);
+        })
+        .then(([, modelsRes]) => modelsRes.json())
+        .then(newModels => renderModelCards(_hwData, _selectedModel, newModels))
+        .catch(err => {
+          toast('Delete failed: ' + err.message, 'error');
+          btn.disabled = false;
+          btn.textContent = 'Delete';
+        });
     });
   });
 }
@@ -572,33 +594,34 @@ function badgeHtml(status) {
   return `<span class="capability-badge ${status}">${icons[status] || ''} ${labels[status] || status}</span>`;
 }
 
-document.getElementById('save-settings-btn').addEventListener('click', async () => {
+document.getElementById('save-settings-btn').addEventListener('click', () => {
   const btn = document.getElementById('save-settings-btn');
   btn.disabled = true;
   btn.textContent = 'Saving …';
-  try {
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        storage_dir: document.getElementById('setting-storage-dir').value,
-        whisper_model: _selectedModel,
-        device_override: document.getElementById('setting-device-override').value || null,
-      }),
-    });
-    btn.textContent = '✓ Saved';
-    btn.classList.add('btn-success');
-    setTimeout(() => {
-      btn.textContent = 'Save settings';
-      btn.classList.remove('btn-success');
+  fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storage_dir: document.getElementById('setting-storage-dir').value,
+      whisper_model: _selectedModel,
+      device_override: document.getElementById('setting-device-override').value || null,
+    }),
+  })
+    .then(() => {
+      btn.textContent = '✓ Saved';
+      btn.classList.add('btn-success');
+      setTimeout(() => {
+        btn.textContent = 'Save settings';
+        btn.classList.remove('btn-success');
+        btn.disabled = false;
+      }, 2000);
+      toast('Settings saved', 'success');
+    })
+    .catch(() => {
+      toast('Failed to save settings', 'error');
       btn.disabled = false;
-    }, 2000);
-    toast('Settings saved', 'success');
-  } catch {
-    toast('Failed to save settings', 'error');
-    btn.disabled = false;
-    btn.textContent = 'Save settings';
-  }
+      btn.textContent = 'Save settings';
+    });
 });
 
 // ── Helpers ───────────────────────────────────────────────
@@ -611,21 +634,19 @@ function escHtml(str) {
 }
 
 // ── Shutdown ──────────────────────────────────────────────
-document.getElementById('shutdown-btn').addEventListener('click', async () => {
+document.getElementById('shutdown-btn').addEventListener('click', () => {
   if (!confirm('Shut down the server? You will need to restart it from the terminal.')) return;
 
   const btn = document.getElementById('shutdown-btn');
   btn.disabled = true;
   btn.textContent = 'Shutting down …';
 
-  try {
-    await fetch('/api/shutdown', { method: 'POST' });
-  } catch {
-    // Connection reset is expected — the server died before the response finished.
-  }
-
-  // Show the shutdown screen regardless of whether the response arrived.
-  document.getElementById('shutdown-overlay').style.display = 'flex';
+  // Connection reset is expected — show overlay regardless of fetch outcome.
+  fetch('/api/shutdown', { method: 'POST' })
+    .catch(() => {})
+    .finally(() => {
+      document.getElementById('shutdown-overlay').style.display = 'flex';
+    });
 });
 
 // Initial load
