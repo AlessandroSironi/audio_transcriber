@@ -1,0 +1,5 @@
+# Apple Silicon additions — install AFTER base requirements:
+#   pip install -r requirements.txt
+#   pip install -r requirements-apple.txt
+mlx>=0.21
+mlx-whisper>=0.4

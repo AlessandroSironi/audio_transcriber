@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audio Transcriber</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Top Nav ──────────────────────────────────────── -->
+  <nav class="top-nav">
+    <div class="nav-logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="8" y1="22" x2="16" y2="22"/>
+      </svg>
+      Audio Transcriber
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-tab="upload">Upload</button>
+      <button class="nav-tab" data-tab="library">Library</button>
+      <button class="nav-tab" data-tab="viewer" id="viewer-tab-btn" style="display:none">Viewer</button>
+      <button class="nav-tab" data-tab="settings">Settings</button>
+    </div>
+    <div class="nav-actions">
+      <button class="theme-btn" id="theme-toggle" title="Toggle theme">
+        <svg id="theme-icon-dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/>
+          <line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg id="theme-icon-light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ── Upload ──────────────────────────────────────── -->
+  <main>
+    <div class="page active" id="page-upload">
+      <div class="upload-zone" id="drop-zone">
+        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <polyline points="16 16 12 12 8 16"/>
+          <line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+        </svg>
+        <span class="upload-label">Drop audio or video file here</span>
+        <span class="upload-sub">MP3, MP4, WAV, M4A, FLAC, OGG, WEBM and more · any format ffmpeg can read</span>
+        <input type="file" id="file-input" accept="audio/*,video/*" style="display:none" />
+      </div>
+
+      <div class="file-preview" id="file-preview">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent);flex-shrink:0">
+          <path d="M9 18V5l12-2v13"/>
+          <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+        </svg>
+        <div>
+          <div class="file-name" id="file-name-label"></div>
+          <div class="file-size" id="file-size-label"></div>
+        </div>
+        <button class="btn btn-ghost" id="clear-file-btn" style="margin-left:auto">✕ Clear</button>
+        <button class="btn btn-primary" id="start-btn">Transcribe</button>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="stage-timeline" id="stage-timeline">
+          <!-- injected by JS -->
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px">
+          <div class="progress-log" id="progress-log">Waiting …</div>
+          <button class="btn btn-danger" id="stop-btn" style="display:none;padding:5px 14px;font-size:.8rem">⏹ Stop</button>
+        </div>
+      </div>
+
+      <!-- System resource stats -->
+      <div class="sys-stats-bar" id="sys-stats-bar" style="display:none">
+        <span class="sys-stat" id="stat-cpu">CPU —</span>
+        <span class="sys-stat-divider">·</span>
+        <span class="sys-stat" id="stat-ram">RAM —</span>
+        <span class="sys-stat-divider" id="stat-gpu-divider" style="display:none">·</span>
+        <span class="sys-stat" id="stat-gpu" style="display:none">GPU —</span>
+      </div>
+    </div>
+
+    <!-- ── Library ──────────────────────────────────────── -->
+    <div class="page" id="page-library">
+      <div class="library-header">
+        <h2 style="font-size:1.1rem">Transcriptions</h2>
+        <input type="search" class="search-input" id="library-search" placeholder="Search …" />
+        <button class="btn btn-ghost" id="refresh-library-btn">↻ Refresh</button>
+      </div>
+      <div class="tx-grid" id="tx-grid">
+        <div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <p>No transcriptions yet. Upload an audio file to get started.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Viewer ───────────────────────────────────────── -->
+    <div class="page" id="page-viewer">
+      <div class="viewer-header">
+        <button class="btn btn-ghost" id="back-to-library-btn">← Library</button>
+        <div style="flex:1"></div>
+        <button class="btn btn-ghost" id="copy-md-btn">Copy</button>
+        <button class="btn btn-ghost" id="download-md-btn">⬇ Download</button>
+        <button class="btn btn-danger" id="delete-tx-btn">Delete</button>
+      </div>
+      <div class="viewer-meta-strip" id="viewer-meta-strip"></div>
+      <div class="viewer-body" id="viewer-body"></div>
+    </div>
+
+    <!-- ── Settings ─────────────────────────────────────── -->
+    <div class="page" id="page-settings">
+      <div class="hw-strip" id="hw-strip">
+        <div class="spinner" style="width:14px;height:14px"></div>
+        <span class="hw-item" style="color:var(--text-muted)">Loading hardware info …</span>
+      </div>
+
+      <div class="settings-grid">
+        <div class="card">
+          <div class="card-title">Storage</div>
+          <div class="form-group">
+            <label class="form-label">Storage directory</label>
+            <input type="text" class="form-input" id="setting-storage-dir" />
+            <span class="form-hint">Audio files and transcriptions will be saved here.</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Model</div>
+          <div class="model-cards" id="settings-model-cards">
+            <div style="color:var(--text-dim);font-size:.85rem">Loading …</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Device override</div>
+          <div class="form-group">
+            <label class="form-label">Force device</label>
+            <select class="form-input" id="setting-device-override">
+              <option value="">Auto (recommended)</option>
+              <option value="cuda">CUDA (NVIDIA)</option>
+              <option value="mps">MPS (Apple Silicon)</option>
+              <option value="cpu">CPU only</option>
+            </select>
+            <span class="form-hint">Leave on Auto unless you need to force a specific backend.</span>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="save-settings-btn">Save settings</button>
+          <a href="/setup" target="_blank" class="btn btn-ghost">Re-run setup wizard</a>
+        </div>
+
+        <div class="card" style="border-color:var(--red);margin-top:8px">
+          <div class="card-title" style="color:var(--red)">Danger zone</div>
+          <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">
+            Stops the server process. You will need to restart it manually from the terminal.
+          </p>
+          <button class="btn btn-danger" id="shutdown-btn">⏻ Shut down server</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Shutdown overlay (shown after server stops) -->
+<div class="shutdown-overlay" id="shutdown-overlay" style="display:none">
+  <div class="shutdown-card">
+    <div class="shutdown-icon">⏻</div>
+    <h1 class="shutdown-title">Server stopped</h1>
+    <p class="shutdown-sub">The Audio Transcriber server has been shut down.</p>
+    <div class="shutdown-instructions">
+      <div class="shutdown-step">
+        <span class="shutdown-step-num">1</span>
+        <div>
+          <div class="shutdown-step-label">Open a terminal in the project directory</div>
+          <code class="shutdown-code">cd {{ project_dir }}</code>
+        </div>
+      </div>
+      {% if activate_cmd %}
+      <div class="shutdown-step">
+        <span class="shutdown-step-num">2</span>
+        <div>
+          <div class="shutdown-step-label">Activate the virtual environment</div>
+          <code class="shutdown-code">{{ activate_cmd }}</code>
+        </div>
+      </div>
+      <div class="shutdown-step">
+        <span class="shutdown-step-num">3</span>
+        <div>
+          <div class="shutdown-step-label">Start the server</div>
+          <code class="shutdown-code">python run.py</code>
+        </div>
+      </div>
+      {% else %}
+      <div class="shutdown-step">
+        <span class="shutdown-step-num">2</span>
+        <div>
+          <div class="shutdown-step-label">Start the server</div>
+          <code class="shutdown-code">python run.py</code>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <p style="font-size:.8rem;color:var(--text-dim);margin-top:20px">
+      The browser will open automatically once the server is ready.
+    </p>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- marked.js (bundled locally — see run.py note) -->
+<script src="/static/marked.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

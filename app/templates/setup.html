@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Setup — Audio Transcriber</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .setup-shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 40px 16px 60px;
+      background: var(--bg);
+    }
+
+    .setup-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 32px;
+    }
+    .setup-logo svg { color: var(--accent); }
+
+    /* Step breadcrumb */
+    .step-bar {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 36px;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    .step-crumb {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      flex: 1;
+      position: relative;
+    }
+
+    .step-crumb::before {
+      content: '';
+      position: absolute;
+      top: 14px;
+      left: -50%;
+      width: 100%;
+      height: 2px;
+      background: var(--border);
+      z-index: 0;
+    }
+    .step-crumb:first-child::before { display: none; }
+    .step-crumb.done::before { background: var(--accent); }
+
+    .step-num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--surface);
+      display: grid;
+      place-items: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-dim);
+      z-index: 1;
+      transition: all .25s;
+    }
+    .step-crumb.active .step-num {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-glow);
+    }
+    .step-crumb.done .step-num {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .step-crumb-label {
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .step-crumb.active .step-crumb-label { color: var(--accent); }
+    .step-crumb.done   .step-crumb-label { color: var(--text-muted); }
+
+    /* Card */
+    .setup-card {
+      width: 100%;
+      max-width: 560px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 36px 40px;
+      box-shadow: var(--shadow);
+      animation: fade-up .25s ease;
+    }
+
+    .setup-step { display: none; }
+    .setup-step.active { display: block; }
+
+    .setup-heading {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .setup-sub {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .setup-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 28px;
+    }
+
+    /* Check item */
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      margin-bottom: 10px;
+    }
+    .check-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .check-label { font-weight: 500; font-size: 0.9rem; }
+    .check-detail { font-size: 0.8rem; color: var(--text-muted); }
+
+    /* Download progress */
+    .dl-item {
+      margin-bottom: 16px;
+    }
+    .dl-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      margin-bottom: 6px;
+    }
+    .dl-pct { color: var(--text-muted); }
+    .dl-bar-wrap {
+      background: var(--surface-2);
+      border-radius: 99px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .dl-bar {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--accent), #818cf8);
+      background-size: 200% 100%;
+      width: 0%;
+      transition: width .35s ease;
+    }
+    .dl-bar.running { animation: shimmer 1.4s linear infinite; }
+
+    .install-hint {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-family: monospace;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+<div class="setup-shell">
+  <div class="setup-logo">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      <line x1="12" y1="19" x2="12" y2="22"/>
+      <line x1="8" y1="22" x2="16" y2="22"/>
+    </svg>
+    Audio Transcriber
+  </div>
+
+  <!-- Step indicator -->
+  <div class="step-bar" id="step-bar">
+    <div class="step-crumb active" data-step="1"><div class="step-num">1</div><span class="step-crumb-label">Welcome</span></div>
+    <div class="step-crumb" data-step="2"><div class="step-num">2</div><span class="step-crumb-label">Storage</span></div>
+    <div class="step-crumb" data-step="3"><div class="step-num">3</div><span class="step-crumb-label">ffmpeg</span></div>
+    <div class="step-crumb" data-step="4"><div class="step-num">4</div><span class="step-crumb-label">Model</span></div>
+    <div class="step-crumb" data-step="5"><div class="step-num">5</div><span class="step-crumb-label">Download</span></div>
+  </div>
+
+  <div class="setup-card">
+
+    <!-- Step 1: Welcome -->
+    <div class="setup-step active" id="step-1">
+      <div class="setup-heading">Welcome to Audio Transcriber</div>
+      <div class="setup-sub">
+        Transcribe audio files locally — fully offline, with speaker identification.
+        This one-time wizard will configure your setup in about two minutes.
+        <strong>No accounts or API keys required.</strong>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px">
+        <div class="check-item">
+          <span class="check-icon">🔒</span>
+          <div><div class="check-label">100% local</div><div class="check-detail">No data leaves your machine</div></div>
+        </div>
+        <div class="check-item">
+          <span class="check-icon">⚡</span>
+          <div><div class="check-label">Hardware accelerated</div><div class="check-detail">Apple Silicon, NVIDIA GPU, or CPU</div></div>
+        </div>
+        <div class="check-item">
+          <span class="check-icon">🎙️</span>
+          <div><div class="check-label">Speaker diarization</div><div class="check-detail">Identifies who said what</div></div>
+        </div>
+      </div>
+      <div class="setup-footer">
+        <button class="btn btn-primary" id="step1-next">Get started →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Storage -->
+    <div class="setup-step" id="step-2">
+      <div class="setup-heading">Storage location</div>
+      <div class="setup-sub">Where should transcriptions and audio files be saved?</div>
+      <div class="form-group">
+        <label class="form-label">Directory</label>
+        <input type="text" class="form-input" id="setup-storage-dir" value="" placeholder="~/AudioTranscriptions" />
+        <span class="form-hint" id="storage-hint"></span>
+      </div>
+      <div class="setup-footer">
+        <button class="btn btn-ghost" id="step2-back">← Back</button>
+        <button class="btn btn-primary" id="step2-next">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: ffmpeg check -->
+    <div class="setup-step" id="step-3">
+      <div class="setup-heading">System check</div>
+      <div class="setup-sub">Verifying that required system tools are available.</div>
+      <div id="ffmpeg-status" style="margin-bottom:16px">
+        <div class="check-item">
+          <span class="spinner" style="width:18px;height:18px"></span>
+          <div><div class="check-label">Checking ffmpeg …</div></div>
+        </div>
+      </div>
+      <div id="ffmpeg-hint" style="display:none"></div>
+      <div class="setup-footer">
+        <button class="btn btn-ghost" id="step3-back">← Back</button>
+        <button class="btn btn-primary" id="step3-next" disabled>Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Model size -->
+    <div class="setup-step" id="step-4">
+      <div class="setup-heading">Choose model size</div>
+      <div class="setup-sub">
+        Larger models produce more accurate transcriptions but require more memory.
+        Badges show what can run accelerated on your hardware.
+      </div>
+      <div class="model-cards" id="setup-model-cards" style="margin-bottom:8px">
+        <div style="color:var(--text-dim)">Loading hardware info …</div>
+      </div>
+      <div class="setup-footer">
+        <button class="btn btn-ghost" id="step4-back">← Back</button>
+        <button class="btn btn-primary" id="step4-next">Next →</button>
+      </div>
+    </div>
+
+    <!-- Step 5: Download -->
+    <div class="setup-step" id="step-5">
+      <div class="setup-heading">Downloading models</div>
+      <div class="setup-sub">
+        Models are downloaded once to your local cache (~20 MB for diarization, varies for Whisper).
+        This may take a few minutes depending on your internet speed.
+      </div>
+
+      <div class="dl-item">
+        <div class="dl-label"><span>Diarization models (resemblyzer + VAD)</span><span class="dl-pct" id="dl-pct-diarization">0%</span></div>
+        <div class="dl-bar-wrap"><div class="dl-bar" id="dl-bar-diarization"></div></div>
+      </div>
+      <div class="dl-item">
+        <div class="dl-label"><span id="dl-whisper-label">Whisper model</span><span class="dl-pct" id="dl-pct-whisper">0%</span></div>
+        <div class="dl-bar-wrap"><div class="dl-bar" id="dl-bar-whisper"></div></div>
+      </div>
+
+      <div id="dl-log" style="font-size:.82rem;color:var(--text-muted);min-height:1.4em;margin-top:8px"></div>
+      <div id="dl-error" style="color:var(--red);font-size:.85rem;margin-top:8px;display:none"></div>
+
+      <div class="setup-footer">
+        <button class="btn btn-primary" id="step5-start" style="min-width:130px">Start download</button>
+        <button class="btn btn-primary" id="step5-finish" style="display:none">Open app →</button>
+      </div>
+    </div>
+
+  </div><!-- /setup-card -->
+</div><!-- /setup-shell -->
+
+<script src="/static/setup.js"></script>
+</body>
+</html>

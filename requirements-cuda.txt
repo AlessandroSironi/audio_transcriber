@@ -1,0 +1,6 @@
+# NVIDIA CUDA additions — replaces the torch/torchaudio lines from requirements.txt:
+#   pip install -r requirements.txt --ignore-requires-python
+#   pip install -r requirements-cuda.txt
+--index-url https://download.pytorch.org/whl/cu121
+torch==2.5.1+cu121
+torchaudio==2.5.1+cu121
