@@ -47,6 +47,25 @@
   --shadow-sm: 0 2px 8px rgba(0,0,0,.07);
 }
 
+[data-theme="light"] .top-nav {
+  background: rgba(244, 246, 251, 0.82);
+}
+[data-theme="light"] .card,
+[data-theme="light"] .tx-card,
+[data-theme="light"] .viewer-body {
+  background: rgba(255, 255, 255, 0.82);
+}
+[data-theme="light"] .file-preview,
+[data-theme="light"] .hw-strip {
+  background: rgba(238, 240, 248, 0.82);
+}
+[data-theme="light"] .bg-orbs::before {
+  background: radial-gradient(circle, rgba(99,102,241,0.04) 0%, transparent 70%);
+}
+[data-theme="light"] .bg-orbs::after {
+  background: radial-gradient(circle, rgba(129,140,248,0.03) 0%, transparent 70%);
+}
+
 /* ── Reset & base ───────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -995,3 +1014,18 @@ body::before {
 }
 
 main { position: relative; z-index: 1; }
+
+/* ── Reduced motion ─────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .bg-orbs::before,
+  .bg-orbs::after,
+  .upload-zone,
+  .upload-wave span,
+  .stage-node.active .stage-dot::after,
+  .progress-bar.running,
+  .tx-card,
+  .toast {
+    animation: none !important;
+    transition: none !important;
+  }
+}
