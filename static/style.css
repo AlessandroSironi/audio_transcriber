@@ -198,11 +198,18 @@ button, input, select, textarea {
 
 /* ── Cards ──────────────────────────────────────────────── */
 .card {
-  background: var(--surface);
+  background: rgba(26, 29, 39, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 20px;
   box-shadow: var(--shadow-sm);
+}
+
+.card:hover {
+  box-shadow: 0 8px 32px rgba(99,102,241,0.15), var(--shadow-sm);
+  border-color: rgba(99,102,241,0.35);
 }
 
 .card-title {
@@ -300,7 +307,9 @@ button, input, select, textarea {
   display: none;
   align-items: center;
   gap: 12px;
-  background: var(--surface-2);
+  background: rgba(35, 39, 56, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
@@ -437,7 +446,9 @@ button, input, select, textarea {
 }
 
 .tx-card {
-  background: var(--surface);
+  background: rgba(26, 29, 39, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
@@ -447,9 +458,9 @@ button, input, select, textarea {
 }
 
 .tx-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--accent);
-  box-shadow: 0 8px 32px rgba(99,102,241,.15);
+  transform: translateY(-3px);
+  border-color: rgba(99,102,241,0.45);
+  box-shadow: 0 8px 32px rgba(99,102,241,0.18), 0 2px 8px rgba(0,0,0,0.3);
 }
 
 .tx-card-title {
@@ -501,7 +512,9 @@ button, input, select, textarea {
 }
 
 .viewer-body {
-  background: var(--surface);
+  background: rgba(26, 29, 39, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 24px 28px;
@@ -539,7 +552,9 @@ button, input, select, textarea {
   gap: 12px;
   flex-wrap: wrap;
   padding: 14px 18px;
-  background: var(--surface-2);
+  background: rgba(35, 39, 56, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   margin-bottom: 20px;
