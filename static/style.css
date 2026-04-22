@@ -109,6 +109,11 @@ button, input, select, textarea {
   50%       { box-shadow: 0 0 40px rgba(99,102,241,0.13), inset 0 0 20px rgba(99,102,241,0.04); }
 }
 
+@keyframes card-spring-in {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @keyframes wave-bar {
   from { transform: scaleY(0.35); opacity: 0.22; }
   to   { transform: scaleY(1);    opacity: 0.5; }
@@ -524,7 +529,7 @@ button, input, select, textarea {
   padding: 16px;
   cursor: pointer;
   transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
-  animation: fade-up .22s ease both;
+  animation: card-spring-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 .tx-card:hover {
@@ -654,7 +659,11 @@ button, input, select, textarea {
   transition: border-color var(--transition);
   width: 100%;
 }
-.form-input:focus { outline: none; border-color: var(--accent); }
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.2);
+}
 
 .form-hint { font-size: 0.78rem; color: var(--text-dim); }
 
@@ -675,7 +684,7 @@ button, input, select, textarea {
 }
 
 .model-card:hover { border-color: var(--accent-dim); }
-.model-card.selected { border-color: var(--accent); background: var(--accent-glow); }
+.model-card.selected { border-color: var(--accent); background: var(--accent-glow); box-shadow: 0 0 0 1px rgba(99,102,241,0.5), 0 4px 20px rgba(99,102,241,0.15); }
 .model-card.recommended::after {
   content: "★ Recommended";
   position: absolute;
