@@ -83,12 +83,14 @@ function handleFile(file) {
   fileNameLbl.textContent = file.name;
   fileSizeLbl.textContent = humanSize(file.size);
   filePreview.classList.add('visible');
+  document.getElementById('upload-wave').style.display = 'none';
 }
 
 clearBtn.addEventListener('click', () => {
   selectedFile = null;
   fileInput.value = '';
   filePreview.classList.remove('visible');
+  document.getElementById('upload-wave').style.display = '';
   document.getElementById('progress-wrap').classList.remove('visible');
   resetProgress();
 });

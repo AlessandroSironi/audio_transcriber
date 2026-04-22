@@ -21,13 +21,13 @@
       Audio Transcriber
     </div>
     <div class="nav-tabs">
-      <button class="nav-tab active" data-tab="upload">Upload</button>
-      <button class="nav-tab" data-tab="library">Library</button>
-      <button class="nav-tab" data-tab="viewer" id="viewer-tab-btn" style="display:none">Viewer</button>
-      <button class="nav-tab" data-tab="settings">Settings</button>
+      <button type="button" class="nav-tab active" data-tab="upload">Upload</button>
+      <button type="button" class="nav-tab" data-tab="library">Library</button>
+      <button type="button" class="nav-tab" data-tab="viewer" id="viewer-tab-btn" style="display:none">Viewer</button>
+      <button type="button" class="nav-tab" data-tab="settings">Settings</button>
     </div>
     <div class="nav-actions">
-      <button class="theme-btn" id="theme-toggle" title="Toggle theme">
+      <button type="button" class="theme-btn" id="theme-toggle" title="Toggle theme">
         <svg id="theme-icon-dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="5"/>
           <line x1="12" y1="1" x2="12" y2="3"/>
@@ -50,6 +50,9 @@
   <main>
     <div class="page active" id="page-upload">
       <div class="upload-zone" id="drop-zone">
+        <div class="upload-wave" id="upload-wave" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <polyline points="16 16 12 12 8 16"/>
           <line x1="12" y1="12" x2="12" y2="21"/>
@@ -69,8 +72,8 @@
           <div class="file-name" id="file-name-label"></div>
           <div class="file-size" id="file-size-label"></div>
         </div>
-        <button class="btn btn-ghost" id="clear-file-btn" style="margin-left:auto">✕ Clear</button>
-        <button class="btn btn-primary" id="start-btn">Transcribe</button>
+        <button type="button" class="btn btn-ghost" id="clear-file-btn" style="margin-left:auto">✕ Clear</button>
+        <button type="button" class="btn btn-primary" id="start-btn">Transcribe</button>
       </div>
 
       <!-- Progress -->
@@ -83,7 +86,7 @@
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px">
           <div class="progress-log" id="progress-log">Waiting …</div>
-          <button class="btn btn-danger" id="stop-btn" style="display:none;padding:5px 14px;font-size:.8rem">⏹ Stop</button>
+          <button type="button" class="btn btn-danger" id="stop-btn" style="display:none;padding:5px 14px;font-size:.8rem">⏹ Stop</button>
         </div>
       </div>
 
@@ -102,7 +105,7 @@
       <div class="library-header">
         <h2 style="font-size:1.1rem">Transcriptions</h2>
         <input type="search" class="search-input" id="library-search" placeholder="Search …" />
-        <button class="btn btn-ghost" id="refresh-library-btn">↻ Refresh</button>
+        <button type="button" class="btn btn-ghost" id="refresh-library-btn">↻ Refresh</button>
       </div>
       <div class="tx-grid" id="tx-grid">
         <div class="empty-state">
@@ -118,11 +121,11 @@
     <!-- ── Viewer ───────────────────────────────────────── -->
     <div class="page" id="page-viewer">
       <div class="viewer-header">
-        <button class="btn btn-ghost" id="back-to-library-btn">← Library</button>
+        <button type="button" class="btn btn-ghost" id="back-to-library-btn">← Library</button>
         <div style="flex:1"></div>
-        <button class="btn btn-ghost" id="copy-md-btn">Copy</button>
-        <button class="btn btn-ghost" id="download-md-btn">⬇ Download</button>
-        <button class="btn btn-danger" id="delete-tx-btn">Delete</button>
+        <button type="button" class="btn btn-ghost" id="copy-md-btn">Copy</button>
+        <button type="button" class="btn btn-ghost" id="download-md-btn">⬇ Download</button>
+        <button type="button" class="btn btn-danger" id="delete-tx-btn">Delete</button>
       </div>
       <div class="viewer-meta-strip" id="viewer-meta-strip"></div>
       <div class="viewer-body" id="viewer-body"></div>
@@ -167,7 +170,7 @@
         </div>
 
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary" id="save-settings-btn">Save settings</button>
+          <button type="button" class="btn btn-primary" id="save-settings-btn">Save settings</button>
           <a href="/setup" target="_blank" class="btn btn-ghost">Re-run setup wizard</a>
         </div>
 
@@ -176,7 +179,7 @@
           <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">
             Stops the server process. You will need to restart it manually from the terminal.
           </p>
-          <button class="btn btn-danger" id="shutdown-btn">⏻ Shut down server</button>
+          <button type="button" class="btn btn-danger" id="shutdown-btn">⏻ Shut down server</button>
         </div>
       </div>
     </div>
