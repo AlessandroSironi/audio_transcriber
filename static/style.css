@@ -132,8 +132,11 @@ button, input, select, textarea {
   gap: 8px;
   font-weight: 700;
   font-size: 1rem;
-  color: var(--text);
   white-space: nowrap;
+  background: linear-gradient(135deg, var(--text) 40%, var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .nav-logo svg { color: var(--accent); }
@@ -217,8 +220,11 @@ button, input, select, textarea {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .08em;
-  color: var(--text-muted);
   margin-bottom: 12px;
+  background: linear-gradient(135deg, var(--text-muted) 20%, var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 /* ── Buttons ────────────────────────────────────────────── */
