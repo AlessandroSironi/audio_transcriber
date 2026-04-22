@@ -417,15 +417,18 @@ function renderViewer(meta, markdown) {
   }
 
   // Color-code speaker headings
+  const SP_HUES = [240, 287, 340, 28, 75, 170, 200, 55];
   container.querySelectorAll('h2').forEach(h2 => {
     const m = h2.textContent.match(/Speaker (\d+)/i);
     if (m) {
       const n = Math.min(parseInt(m[1]), 8);
+      const hue = SP_HUES[n - 1];
       h2.style.cssText = `
         border-left: 3px solid var(--sp${n});
         color: var(--sp${n});
         padding: 6px 12px;
-        background: hsla(${(n-1)*47},60%,60%,.08);
+        background: hsla(${hue},60%,60%,.08);
+        box-shadow: inset 4px 0 14px hsla(${hue},60%,60%,.14);
         border-radius: 4px;
         display: inline-block;
         margin: 20px 0 8px;
