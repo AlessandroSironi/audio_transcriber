@@ -5,6 +5,7 @@ Both implementations return list[TranscriptSegment] with per-segment timestamps.
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
@@ -95,6 +96,7 @@ class MLXWhisperTranscriber:
             "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
             "large-v3":       "mlx-community/whisper-large-v3-mlx",
         }
+        self._model_size = model_size
         self._model_id = _hf_map.get(model_size, f"mlx-community/whisper-{model_size}-mlx")
 
     def transcribe(
@@ -109,15 +111,41 @@ class MLXWhisperTranscriber:
 
         if cancel_event and cancel_event.is_set():
             raise InterruptedError("Job cancelled")
-        if progress:
-            progress(pct_start + 2, "Loading MLX Whisper model …")
 
-        result = mlx_whisper.transcribe(
-            str(audio_path),
-            path_or_hf_repo=self._model_id,
-            word_timestamps=True,
-        )
+        # mlx_whisper.transcribe() is a blocking call with no progress callback.
+        # Run it in a sub-thread and tick elapsed time every 2 s so the browser
+        # shows live feedback instead of a frozen "Loading model…" message.
+        result_holder: list = [None]
+        error_holder: list = [None]
+        done = threading.Event()
 
+        def _run() -> None:
+            try:
+                result_holder[0] = mlx_whisper.transcribe(
+                    str(audio_path),
+                    path_or_hf_repo=self._model_id,
+                    word_timestamps=True,
+                )
+            except Exception as exc:
+                error_holder[0] = exc
+            finally:
+                done.set()
+
+        threading.Thread(target=_run, daemon=True).start()
+
+        start = time.monotonic()
+        model_label = self._model_size
+        while not done.wait(timeout=2.0):
+            if cancel_event and cancel_event.is_set():
+                raise InterruptedError("Job cancelled")
+            if progress:
+                elapsed = int(time.monotonic() - start)
+                progress(pct_start + 2, f"Transcribing with Whisper ({model_label}) … {elapsed}s")
+
+        if error_holder[0]:
+            raise error_holder[0]
+
+        result = result_holder[0]
         segments: list[TranscriptSegment] = []
         raw_segments = result.get("segments", [])
         total = len(raw_segments) or 1
