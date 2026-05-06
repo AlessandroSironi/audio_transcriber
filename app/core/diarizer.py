@@ -51,7 +51,30 @@ class Diarizer:
     def _load(self) -> None:
         if self._encoder is not None:
             return
+        import types
         import torch
+
+        # SpeechBrain 1.0+ registers optional integrations (k2_fsa,
+        # huggingface.wordemb, …) as LazyModules in
+        # speechbrain.utils.importutils. When their dependencies aren't
+        # installed, ensure_module() raises ImportError. Patch it once to
+        # cache a stub module instead, covering all missing integrations.
+        try:
+            from speechbrain.utils.importutils import LazyModule as _SBLazy
+            if not getattr(_SBLazy, "_patched_silent", False):
+                _orig_ensure = _SBLazy.ensure_module
+                def _safe_ensure(self, stacklevel, _o=_orig_ensure, _t=types):
+                    try:
+                        return _o(self, stacklevel)
+                    except ImportError:
+                        stub = _t.ModuleType(self.target)
+                        self.lazy_module = stub
+                        return stub
+                _SBLazy.ensure_module = _safe_ensure
+                _SBLazy._patched_silent = True
+        except Exception:
+            pass
+
         from speechbrain.inference.classifiers import EncoderClassifier
 
         savedir = str(Path.home() / ".cache" / "speechbrain" / "ecapa-voxceleb")
