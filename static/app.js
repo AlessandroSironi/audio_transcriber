@@ -303,17 +303,82 @@ startSysStats();
 // ── Library ───────────────────────────────────────────────
 const searchInput = document.getElementById('library-search');
 let _txList = [];
+let _sortKey = 'title';
+let _sortDir = 'asc';
 
 async function loadLibrary() {
   const grid = document.getElementById('tx-grid');
   try {
     const res = await fetch('/api/transcriptions');
     _txList = await res.json();
-    renderLibrary(_txList);
+    renderLibrary(applyFilters(_txList));
   } catch {
     grid.innerHTML = '<p style="color:var(--red)">Failed to load transcriptions.</p>';
   }
 }
+
+function durationToSecs(dur) {
+  if (!dur) return 0;
+  const p = dur.split(':').map(Number);
+  return p.length === 3 ? p[0]*3600 + p[1]*60 + p[2] : p.length === 2 ? p[0]*60 + p[1] : 0;
+}
+
+function sortList(list) {
+  return [...list].sort((a, b) => {
+    let va, vb;
+    switch (_sortKey) {
+      case 'date':
+        va = new Date(a.date || 0).getTime();
+        vb = new Date(b.date || 0).getTime();
+        break;
+      case 'title':
+        va = (a.title || a.result_id || '').toLowerCase();
+        vb = (b.title || b.result_id || '').toLowerCase();
+        break;
+      case 'model':
+        va = (a.model || '').toLowerCase();
+        vb = (b.model || '').toLowerCase();
+        break;
+      case 'duration':
+        va = durationToSecs(a.duration);
+        vb = durationToSecs(b.duration);
+        break;
+      case 'speakers':
+        va = a.speakers || 0;
+        vb = b.speakers || 0;
+        break;
+      default: return 0;
+    }
+    if (va < vb) return _sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return _sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+}
+
+function applyFilters(list) {
+  const q = searchInput.value.toLowerCase();
+  const filtered = q
+    ? list.filter(tx => (tx.title || tx.result_id || '').toLowerCase().includes(q))
+    : list;
+  return sortList(filtered);
+}
+
+// Sort bar wiring
+document.querySelectorAll('.sort-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    _sortKey = btn.dataset.sort;
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderLibrary(applyFilters(_txList));
+  });
+});
+
+const sortDirBtn = document.getElementById('sort-dir-btn');
+sortDirBtn.addEventListener('click', () => {
+  _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+  sortDirBtn.textContent = _sortDir === 'desc' ? '↓' : '↑';
+  renderLibrary(applyFilters(_txList));
+});
 
 function relativeTime(iso) {
   if (!iso) return '';
@@ -338,7 +403,15 @@ function renderLibrary(list) {
   }
   grid.innerHTML = list.map((tx, i) => `
     <div class="tx-card" data-id="${tx.result_id}" style="animation-delay:${i*50}ms">
-      <div class="tx-card-title">${escHtml(tx.title || tx.result_id)}</div>
+      <div class="tx-card-header">
+        <div class="tx-card-title">${escHtml(tx.title || tx.result_id)}</div>
+        <button type="button" class="tx-card-edit-btn" data-id="${tx.result_id}" title="Edit">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+        </button>
+      </div>
       <div style="font-size:.78rem;color:var(--text-dim)">${relativeTime(tx.date)}</div>
       <div class="tx-meta">
         ${tx.duration ? `<span class="pill">${tx.duration}</span>` : ''}
@@ -349,20 +422,102 @@ function renderLibrary(list) {
     </div>
   `).join('');
   grid.querySelectorAll('.tx-card').forEach(card => {
-    card.addEventListener('click', () => openViewer(card.dataset.id));
+    card.addEventListener('click', e => {
+      if (e.target.closest('.tx-card-edit-btn')) return;
+      openViewer(card.dataset.id);
+    });
+  });
+  grid.querySelectorAll('.tx-card-edit-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const tx = _txList.find(t => t.result_id === btn.dataset.id);
+      if (tx) openEditModal(tx);
+    });
   });
 }
 
-searchInput.addEventListener('input', () => {
-  const q = searchInput.value.toLowerCase();
-  renderLibrary(_txList.filter(tx => (tx.title || '').toLowerCase().includes(q)));
-});
+searchInput.addEventListener('input', () => renderLibrary(applyFilters(_txList)));
 
 document.getElementById('refresh-library-btn').addEventListener('click', loadLibrary);
+
+// ── Edit modal ────────────────────────────────────────────
+let _editingResultId = null;
+
+function toDatetimeLocal(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function openEditModal(tx) {
+  _editingResultId = tx.result_id;
+  document.getElementById('edit-title-input').value = tx.title || '';
+  document.getElementById('edit-date-input').value = toDatetimeLocal(tx.date);
+  document.getElementById('edit-modal').classList.add('open');
+  document.getElementById('edit-title-input').focus();
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+  _editingResultId = null;
+}
+
+document.getElementById('edit-modal-close').addEventListener('click', closeEditModal);
+document.getElementById('edit-modal-cancel').addEventListener('click', closeEditModal);
+document.getElementById('edit-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('edit-modal')) closeEditModal();
+});
+
+document.getElementById('edit-modal-save').addEventListener('click', async () => {
+  if (!_editingResultId) return;
+  const title = document.getElementById('edit-title-input').value.trim();
+  const dateVal = document.getElementById('edit-date-input').value;
+  if (!title) { toast('Title cannot be empty', 'error'); return; }
+
+  const btn = document.getElementById('edit-modal-save');
+  btn.disabled = true;
+  btn.textContent = 'Saving …';
+
+  const updates = { title };
+  if (dateVal) {
+    const d = new Date(dateVal);
+    const pad = n => String(n).padStart(2, '0');
+    updates.date = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  const savedId = _editingResultId;
+  try {
+    const res = await fetch(`/api/transcriptions/${savedId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    toast('Saved', 'success');
+    closeEditModal();
+    await loadLibrary();
+    if (_currentResultId === savedId) openViewer(savedId);
+  } catch (err) {
+    toast(`Save failed: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
+});
+
+// Keyboard shortcut: Escape closes modal
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('edit-modal').classList.contains('open')) {
+    closeEditModal();
+  }
+});
 
 // ── Viewer ────────────────────────────────────────────────
 let _currentResultId = null;
 let _currentMarkdown = '';
+let _currentMeta = {};
 
 async function openViewer(resultId) {
   _currentResultId = resultId;
@@ -376,7 +531,8 @@ async function openViewer(resultId) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     _currentMarkdown = data.markdown || '';
-    renderViewer(data.metadata || {}, _currentMarkdown);
+    _currentMeta = data.metadata || {};
+    renderViewer(_currentMeta, _currentMarkdown);
   } catch (err) {
     document.getElementById('viewer-body').innerHTML =
       `<p style="color:var(--red)">Failed to load transcription: ${escHtml(err.message)}</p>`;
@@ -438,6 +594,11 @@ function renderViewer(meta, markdown) {
 }
 
 document.getElementById('back-to-library-btn').addEventListener('click', () => showTab('library'));
+
+document.getElementById('edit-tx-btn').addEventListener('click', () => {
+  if (!_currentResultId) return;
+  openEditModal({ result_id: _currentResultId, ..._currentMeta });
+});
 
 function _fallbackCopy(text) {
   try {

@@ -72,6 +72,33 @@ class StorageManager:
             results.append(meta)
         return results
 
+    def update_metadata(self, result_id: str, updates: dict) -> dict:
+        """Update title and/or date in the YAML front matter (in-place)."""
+        path = self.markdown_path(result_id)
+        if not path.exists():
+            raise FileNotFoundError(f"Transcription '{result_id}' not found")
+        text = path.read_text(encoding="utf-8")
+        if not text.startswith("---"):
+            raise ValueError("No YAML front matter found")
+        parts = text.split("---", 2)
+        if len(parts) < 3:
+            raise ValueError("Malformed front matter")
+        meta = yaml.safe_load(parts[1]) or {}
+        fm = parts[1]
+        body = parts[2]
+        if "title" in updates:
+            new_title = str(updates["title"])
+            old_title = meta.get("title", "")
+            fm = re.sub(r'^title:.*$', f'title: "{new_title}"', fm, flags=re.MULTILINE)
+            body = body.replace(f"# Transcription: {old_title}", f"# Transcription: {new_title}", 1)
+            meta["title"] = new_title
+        if "date" in updates:
+            new_date = str(updates["date"])
+            fm = re.sub(r'^date:.*$', f'date: "{new_date}"', fm, flags=re.MULTILINE)
+            meta["date"] = new_date
+        path.write_text(f"---{fm}---{body}", encoding="utf-8")
+        return meta
+
     def delete(self, result_id: str) -> None:
         self.markdown_path(result_id).unlink(missing_ok=True)
         self.audio_path(result_id).unlink(missing_ok=True)

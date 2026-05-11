@@ -562,15 +562,6 @@ button, input, select, textarea {
   box-shadow: 0 8px 32px rgba(99,102,241,0.18), 0 2px 8px rgba(0,0,0,0.3);
 }
 
-.tx-card-title {
-  font-weight: 600;
-  font-size: 0.95rem;
-  margin-bottom: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .tx-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 
 .pill {
@@ -953,6 +944,187 @@ button, input, select, textarea {
   user-select: all;
   word-break: break-all;
   overflow-wrap: anywhere;
+}
+
+/* ── Sort bar ────────────────────────────────────────────── */
+.sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.sort-label {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-right: 2px;
+}
+
+.sort-btn {
+  display: -webkit-inline-flex;
+  display: inline-flex;
+  -webkit-align-items: center;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  line-height: 1;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.sort-btn svg {
+  display: block;       /* removes inline baseline gap in Safari */
+  flex-shrink: 0;
+  margin-right: 5px;    /* replaces gap for Safari < 14.1 */
+}
+.sort-btn:hover { color: var(--text); border-color: var(--accent); }
+.sort-btn.active {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sort-dir-btn {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: color var(--transition), border-color var(--transition);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.sort-dir-btn:hover { color: var(--text); border-color: var(--accent); }
+
+/* ── Card header + edit button ───────────────────────────── */
+.tx-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tx-card-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tx-card-edit-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition),
+              border-color var(--transition), background var(--transition);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.tx-card:hover .tx-card-edit-btn { opacity: 1; }
+.tx-card-edit-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+/* ── Edit modal ──────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;   /* inset: 0 not supported in Safari < 14.1 */
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 500;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  /* visibility/opacity transition works in Safari; display toggle + animation does not */
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-transition: opacity 0.18s ease, visibility 0.18s ease;
+  transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+.modal-overlay.open {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: all;
+}
+.modal-overlay.open .modal {
+  animation: fade-up 0.2s ease;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: var(--shadow);
+  animation: fade-up 0.2s ease;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.modal-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.modal-close {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: color var(--transition), border-color var(--transition);
+}
+.modal-close:hover { color: var(--text); border-color: var(--accent); }
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
 }
 
 /* ── Responsive ─────────────────────────────────────────── */

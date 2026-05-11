@@ -140,6 +140,22 @@ async def get_transcription(result_id: str):
         raise HTTPException(status_code=404, detail="Transcription not found")
 
 
+@router.patch("/api/transcriptions/{result_id}")
+async def update_transcription(result_id: str, body: dict):
+    updates = {k: v for k, v in body.items() if k in {"title", "date"}}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    cfg = load_settings()
+    storage = StorageManager(cfg.storage_dir)
+    try:
+        meta = storage.update_metadata(result_id, updates)
+        return {"ok": True, "metadata": meta}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Transcription not found")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.delete("/api/transcriptions/{result_id}")
 async def delete_transcription(result_id: str):
     cfg = load_settings()
