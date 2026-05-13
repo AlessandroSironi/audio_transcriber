@@ -43,21 +43,39 @@ async def job_progress(websocket: WebSocket, job_id: str):
         await websocket.close()
         return
 
+    if job.status == "cancelled":
+        await websocket.send_json({
+            "job_id": job_id, "stage": "cancelled", "pct": job.pct,
+            "message": "Transcription cancelled",
+        })
+        await websocket.close()
+        return
+
+    q = job.add_ws_queue()
+    last_event = job.last_event()
+    if last_event:
+        await websocket.send_json(last_event)
+        if last_event.get("stage") in ("done", "error", "cancelled"):
+            job.remove_ws_queue(q)
+            await websocket.close()
+            return
+
     try:
         while True:
             try:
-                msg = await asyncio.wait_for(job.ws_queue.get(), timeout=30.0)
+                msg = await asyncio.wait_for(q.get(), timeout=30.0)
             except asyncio.TimeoutError:
                 # Send a keepalive ping
                 await websocket.send_json({"stage": "ping"})
                 continue
 
             await websocket.send_json(msg)
-            if msg.get("stage") in ("done", "error"):
+            if msg.get("stage") in ("done", "error", "cancelled"):
                 break
     except WebSocketDisconnect:
         pass
     finally:
+        job.remove_ws_queue(q)
         await websocket.close()
 
 
@@ -70,7 +88,7 @@ def get_setup_queue(session_id: str) -> asyncio.Queue:
 
 
 def push_setup_progress(session_id: str, msg: dict, loop: asyncio.AbstractEventLoop) -> None:
-    q = _setup_queues.get(session_id)
+    q = get_setup_queue(session_id)
     if q and loop:
         asyncio.run_coroutine_threadsafe(q.put(msg), loop)
 

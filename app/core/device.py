@@ -15,12 +15,32 @@ class DeviceProfile(NamedTuple):
     diarizer_device: Literal["cuda", "mps", "cpu"]
 
 
+def _mlx_available() -> bool:
+    if sys.platform != "darwin":
+        return False
+    try:
+        import mlx_whisper  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _torch_mps_available() -> bool:
+    try:
+        import torch
+        return bool(torch.backends.mps.is_available())
+    except Exception:
+        return False
+
+
 def _profile_for(override: str) -> DeviceProfile:
     override = override.lower().strip()
     if override == "cuda":
-        return DeviceProfile("faster-whisper", "cuda", "float16", "cuda")
+        return DeviceProfile("faster-whisper", "cuda", "float16", "cpu")
     if override == "mps":
-        return DeviceProfile("faster-whisper", "mps", "float16", "mps")
+        if _torch_mps_available() and _mlx_available():
+            return DeviceProfile("mlx-whisper", "mps", "float16", "cpu")
+        return DeviceProfile("faster-whisper", "cpu", "int8", "cpu")
     # cpu or anything else
     return DeviceProfile("faster-whisper", "cpu", "int8", "cpu")
 
@@ -42,14 +62,11 @@ def detect_device(override: str | None = None) -> DeviceProfile:
         import torch
 
         if torch.cuda.is_available():
-            return DeviceProfile("faster-whisper", "cuda", "float16", "cuda")
+            return DeviceProfile("faster-whisper", "cuda", "float16", "cpu")
 
         if torch.backends.mps.is_available() and sys.platform == "darwin":
-            try:
-                import mlx_whisper  # noqa: F401 — presence check only
-                return DeviceProfile("mlx-whisper", "mps", "float16", "mps")
-            except ImportError:
-                return DeviceProfile("faster-whisper", "mps", "float16", "mps")
+            if _mlx_available():
+                return DeviceProfile("mlx-whisper", "mps", "float16", "cpu")
 
     except ImportError:
         pass  # torch not installed at all

@@ -116,14 +116,24 @@ async function runSystemCheck() {
 
 // ── Step 4: Model size ────────────────────────────────────
 document.getElementById('step4-back').addEventListener('click', () => goTo(3));
-document.getElementById('step4-next').addEventListener('click', () => {
+document.getElementById('step4-next').addEventListener('click', async () => {
   const sel = document.querySelector('#setup-model-cards .model-card.selected');
   if (sel) wizardData.whisper_model = sel.dataset.model;
   wizardData.step = 5;
   saveWizard();
 
-  // Save config before downloading
-  saveConfig().then(() => goTo(5));
+  const btn = document.getElementById('step4-next');
+  btn.disabled = true;
+  btn.textContent = 'Saving …';
+  try {
+    await saveConfig();
+    goTo(5);
+  } catch (e) {
+    alert(`Failed to save configuration: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Next →';
+  }
 });
 
 let _hwData = null;
@@ -145,11 +155,11 @@ async function loadModelCards() {
       const isRec = name === recommended;
       return `
         <div class="model-card ${isSelected ? 'selected' : ''} ${isRec ? 'recommended' : ''}"
-             data-model="${name}" role="button" tabindex="0">
-          <div class="model-name">${name}</div>
-          <div class="model-desc">${cap.accuracy || '—'} · ${cap.speed || '—'}</div>
-          <span class="capability-badge ${cap.status}">${badgeIcon(cap.status)} ${badgeLabel(cap.status)}</span>
-          <div class="model-note">${cap.note || ''}</div>
+             data-model="${escAttr(name)}" role="button" tabindex="0">
+          <div class="model-name">${escHtml(name)}</div>
+          <div class="model-desc">${escHtml(cap.accuracy || '—')} · ${escHtml(cap.speed || '—')}</div>
+          <span class="capability-badge ${badgeClass(cap.status)}">${badgeIcon(cap.status)} ${badgeLabel(cap.status)}</span>
+          <div class="model-note">${escHtml(cap.note || '')}</div>
         </div>
       `;
     }).join('');
@@ -172,21 +182,33 @@ function badgeIcon(status) {
   return { accelerated: '⚡', tight: '⚠', cpu_only: '○' }[status] || '';
 }
 function badgeLabel(status) {
-  return { accelerated: 'Accelerated', tight: 'Tight', cpu_only: 'CPU only' }[status] || status;
+  return escHtml({ accelerated: 'Accelerated', tight: 'Tight', cpu_only: 'CPU only' }[status] || status);
+}
+function badgeClass(status) {
+  return ['accelerated', 'tight', 'cpu_only'].includes(status) ? status : '';
+}
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function escAttr(str) {
+  return escHtml(str).replace(/'/g, '&#39;');
 }
 
 async function saveConfig() {
-  try {
-    await fetch('/api/setup/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        storage_dir: wizardData.storage_dir || '~/AudioTranscriptions',
-        whisper_model: wizardData.whisper_model || 'large-v3',
-      }),
-    });
-  } catch (e) {
-    console.error('Failed to save config:', e);
+  const res = await fetch('/api/setup/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storage_dir: wizardData.storage_dir || '~/AudioTranscriptions',
+      whisper_model: wizardData.whisper_model || 'large-v3',
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(await res.text());
   }
 }
 
@@ -237,11 +259,12 @@ async function startDownload() {
 
   // Trigger download
   try {
-    await fetch('/api/setup/download', {
+    const res = await fetch('/api/setup/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId }),
     });
+    if (!res.ok) throw new Error(await res.text());
   } catch (e) {
     errEl.textContent = `Failed to start download: ${e.message}`;
     errEl.style.display = 'block';

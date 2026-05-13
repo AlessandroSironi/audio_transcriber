@@ -156,7 +156,7 @@ stopBtn.addEventListener('click', () => {
   if (!activeJobId) return;
   stopBtn.disabled = true;
   stopBtn.textContent = 'Stopping …';
-  fetch(`/api/jobs/${activeJobId}/cancel`, { method: 'POST' }).catch(() => {});
+  fetch(`/api/jobs/${encodeURIComponent(activeJobId)}/cancel`, { method: 'POST' }).catch(() => {});
 });
 
 // ── Transcription job ─────────────────────────────────────
@@ -401,11 +401,14 @@ function renderLibrary(list) {
     </div>`;
     return;
   }
-  grid.innerHTML = list.map((tx, i) => `
-    <div class="tx-card" data-id="${tx.result_id}" style="animation-delay:${i*50}ms">
+  grid.innerHTML = list.map((tx, i) => {
+    const id = tx.result_id || '';
+    const title = tx.title || id;
+    return `
+    <div class="tx-card" data-id="${escAttr(id)}" style="animation-delay:${i*50}ms">
       <div class="tx-card-header">
-        <div class="tx-card-title">${escHtml(tx.title || tx.result_id)}</div>
-        <button type="button" class="tx-card-edit-btn" data-id="${tx.result_id}" title="Edit">
+        <div class="tx-card-title">${escHtml(title)}</div>
+        <button type="button" class="tx-card-edit-btn" data-id="${escAttr(id)}" title="Edit">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -414,13 +417,14 @@ function renderLibrary(list) {
       </div>
       <div style="font-size:.78rem;color:var(--text-dim)">${relativeTime(tx.date)}</div>
       <div class="tx-meta">
-        ${tx.duration ? `<span class="pill">${tx.duration}</span>` : ''}
-        ${tx.speakers ? `<span class="pill green">${tx.speakers} speaker${tx.speakers > 1 ? 's' : ''}</span>` : ''}
-        ${tx.model ? `<span class="pill accent">${tx.model}</span>` : ''}
-        ${tx.device ? `<span class="pill">${tx.device}</span>` : ''}
+        ${tx.duration ? `<span class="pill">${escHtml(tx.duration)}</span>` : ''}
+        ${tx.speakers ? `<span class="pill green">${escHtml(tx.speakers)} speaker${tx.speakers > 1 ? 's' : ''}</span>` : ''}
+        ${tx.model ? `<span class="pill accent">${escHtml(tx.model)}</span>` : ''}
+        ${tx.device ? `<span class="pill">${escHtml(tx.device)}</span>` : ''}
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
   grid.querySelectorAll('.tx-card').forEach(card => {
     card.addEventListener('click', e => {
       if (e.target.closest('.tx-card-edit-btn')) return;
@@ -489,7 +493,7 @@ document.getElementById('edit-modal-save').addEventListener('click', async () =>
 
   const savedId = _editingResultId;
   try {
-    const res = await fetch(`/api/transcriptions/${savedId}`, {
+    const res = await fetch(`/api/transcriptions/${encodeURIComponent(savedId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -573,7 +577,7 @@ function buildAudioPlayer(resultId) {
   if (_currentAudio) { _currentAudio.pause(); _currentAudio.src = ''; }
   _lastActiveTurn = -1;
 
-  const audio = new Audio(`/api/transcriptions/${resultId}/audio`);
+  const audio = new Audio(`/api/transcriptions/${encodeURIComponent(resultId)}/audio`);
   audio.preload = 'metadata';
   _currentAudio = audio;
 
@@ -642,7 +646,7 @@ async function openViewer(resultId) {
     '<div style="color:var(--text-muted);padding:20px">Loading …</div>';
 
   try {
-    const res = await fetch(`/api/transcriptions/${resultId}`);
+    const res = await fetch(`/api/transcriptions/${encodeURIComponent(resultId)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     _currentMarkdown = data.markdown || '';
@@ -666,11 +670,11 @@ function renderViewer(meta, markdown) {
   // Meta strip
   const strip = document.getElementById('viewer-meta-strip');
   const pills = [
-    meta.date    ? `<span class="pill">${new Date(meta.date).toLocaleString()}</span>` : '',
-    meta.duration? `<span class="pill">${meta.duration}</span>` : '',
-    meta.speakers? `<span class="pill green">${meta.speakers} speaker${meta.speakers>1?'s':''}</span>` : '',
-    meta.model   ? `<span class="pill accent">${meta.model}</span>` : '',
-    meta.device  ? `<span class="pill">${meta.device}</span>` : '',
+    meta.date    ? `<span class="pill">${escHtml(new Date(meta.date).toLocaleString())}</span>` : '',
+    meta.duration? `<span class="pill">${escHtml(meta.duration)}</span>` : '',
+    meta.speakers? `<span class="pill green">${escHtml(meta.speakers)} speaker${meta.speakers>1?'s':''}</span>` : '',
+    meta.model   ? `<span class="pill accent">${escHtml(meta.model)}</span>` : '',
+    meta.device  ? `<span class="pill">${escHtml(meta.device)}</span>` : '',
   ];
   strip.innerHTML = pills.join('');
 
@@ -680,6 +684,7 @@ function renderViewer(meta, markdown) {
   try {
     if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
       container.innerHTML = marked.parse(body);
+      sanitizeRenderedHtml(container);
     } else {
       container.innerHTML = `<pre style="white-space:pre-wrap;font-size:.88rem">${escHtml(body)}</pre>`;
     }
@@ -771,7 +776,7 @@ document.getElementById('download-md-btn').addEventListener('click', () => {
 document.getElementById('delete-tx-btn').addEventListener('click', () => {
   if (!_currentResultId) return;
   if (!confirm(`Delete transcription "${_currentResultId}"?`)) return;
-  fetch(`/api/transcriptions/${_currentResultId}`, { method: 'DELETE' })
+  fetch(`/api/transcriptions/${encodeURIComponent(_currentResultId)}`, { method: 'DELETE' })
     .then(() => {
       toast('Deleted', 'success');
       document.getElementById('viewer-tab-btn').style.display = 'none';
@@ -811,8 +816,8 @@ async function loadSettings() {
 function renderHwStrip(hw) {
   const strip = document.getElementById('hw-strip');
   strip.innerHTML = `
-    <span class="hw-item"><strong>${hw.accelerator_name}</strong></span>
-    <span class="hw-item">Accelerator: <strong>${hw.accelerator.toUpperCase()}</strong></span>
+    <span class="hw-item"><strong>${escHtml(hw.accelerator_name)}</strong></span>
+    <span class="hw-item">Accelerator: <strong>${escHtml(String(hw.accelerator).toUpperCase())}</strong></span>
     ${hw.vram_total_mb > 0
       ? `<span class="hw-item">VRAM: <strong>${fmtMb(hw.vram_free_mb)} free</strong> / ${fmtMb(hw.vram_total_mb)} total</span>`
       : ''}
@@ -832,21 +837,21 @@ function renderModelCards(hw, selected, modelStatus = {}) {
     const isRec = name === recommended;
     const ms = modelStatus[name] || {};
     const dlBadge = ms.downloaded
-      ? `<span class="model-dl-badge downloaded">✓ Downloaded${ms.size_mb ? ` · ${ms.size_mb} MB` : ''}</span>`
+      ? `<span class="model-dl-badge downloaded">✓ Downloaded${ms.size_mb ? ` · ${escHtml(ms.size_mb)} MB` : ''}</span>`
       : `<span class="model-dl-badge">Not downloaded</span>`;
     const delBtn = ms.downloaded
-      ? `<button type="button" class="model-del-btn" data-model="${name}" title="Delete model files">Delete</button>`
+      ? `<button type="button" class="model-del-btn" data-model="${escAttr(name)}" title="Delete model files">Delete</button>`
       : '';
     return `
       <div class="model-card ${isSelected ? 'selected' : ''} ${isRec ? 'recommended' : ''}"
-           data-model="${name}" role="button" tabindex="0">
+           data-model="${escAttr(name)}" role="button" tabindex="0">
         <div class="model-card-header">
-          <div class="model-name">${name}</div>
+          <div class="model-name">${escHtml(name)}</div>
           ${delBtn}
         </div>
-        <div class="model-desc">${cap.accuracy || '—'} · ${cap.speed || '—'}</div>
+        <div class="model-desc">${escHtml(cap.accuracy || '—')} · ${escHtml(cap.speed || '—')}</div>
         ${badgeHtml(cap.status)}
-        <div class="model-note">${cap.note || ''}</div>
+        <div class="model-note">${escHtml(cap.note || '')}</div>
         <div class="model-dl-row">${dlBadge}</div>
       </div>
     `;
@@ -868,14 +873,18 @@ function renderModelCards(hw, selected, modelStatus = {}) {
       if (!confirm(`Delete downloaded files for "${modelName}"?\nYou will need to re-download before using it.`)) return;
       btn.disabled = true;
       btn.textContent = 'Deleting…';
-      fetch(`/api/models/${modelName}`, { method: 'DELETE' })
+      fetch(`/api/models/${encodeURIComponent(modelName)}`, { method: 'DELETE' })
         .then(res => res.ok ? res : res.text().then(t => { throw new Error(t); }))
         .then(() => {
           toast(`Model "${modelName}" deleted`, 'success');
           return Promise.all([fetch('/api/hardware'), fetch('/api/models')]);
         })
-        .then(([, modelsRes]) => modelsRes.json())
-        .then(newModels => renderModelCards(_hwData, _selectedModel, newModels))
+        .then(([hwRes, modelsRes]) => Promise.all([hwRes.json(), modelsRes.json()]))
+        .then(([newHw, newModels]) => {
+          _hwData = newHw;
+          renderHwStrip(newHw);
+          renderModelCards(newHw, _selectedModel, newModels);
+        })
         .catch(err => {
           toast('Delete failed: ' + err.message, 'error');
           btn.disabled = false;
@@ -889,7 +898,8 @@ function badgeHtml(status) {
   if (!status) return '';
   const icons  = { accelerated: '⚡', tight: '⚠', cpu_only: '○' };
   const labels = { accelerated: 'Accelerated', tight: 'Tight', cpu_only: 'CPU only' };
-  return `<span class="capability-badge ${status}">${icons[status] || ''} ${labels[status] || status}</span>`;
+  const cls = ['accelerated', 'tight', 'cpu_only'].includes(status) ? status : '';
+  return `<span class="capability-badge ${cls}">${icons[status] || ''} ${escHtml(labels[status] || status)}</span>`;
 }
 
 document.getElementById('save-settings-btn').addEventListener('click', () => {
@@ -905,6 +915,7 @@ document.getElementById('save-settings-btn').addEventListener('click', () => {
       device_override: document.getElementById('setting-device-override').value || null,
     }),
   })
+    .then(res => res.ok ? res : res.text().then(t => { throw new Error(t); }))
     .then(() => {
       btn.textContent = '✓ Saved';
       btn.classList.add('btn-success');
@@ -915,8 +926,8 @@ document.getElementById('save-settings-btn').addEventListener('click', () => {
       }, 2000);
       toast('Settings saved', 'success');
     })
-    .catch(() => {
-      toast('Failed to save settings', 'error');
+    .catch(err => {
+      toast(`Failed to save settings: ${err.message}`, 'error');
       btn.disabled = false;
       btn.textContent = 'Save settings';
     });
@@ -929,6 +940,48 @@ function escHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function escAttr(str) {
+  return escHtml(str).replace(/'/g, '&#39;');
+}
+
+function isSafeUrl(url) {
+  try {
+    const parsed = new URL(url, location.href);
+    return ['http:', 'https:', 'mailto:', 'tel:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeRenderedHtml(root) {
+  const blockedTags = new Set([
+    'SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META', 'BASE',
+    'FORM', 'INPUT', 'BUTTON', 'TEXTAREA', 'SELECT', 'OPTION', 'SVG', 'MATH',
+  ]);
+  const nodes = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+
+  nodes.forEach(el => {
+    if (blockedTags.has(el.tagName)) {
+      el.remove();
+      return;
+    }
+    Array.from(el.attributes).forEach(attr => {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim();
+      if (
+        name.startsWith('on') ||
+        name === 'style' ||
+        name === 'srcdoc' ||
+        ((name === 'href' || name === 'src') && !isSafeUrl(value))
+      ) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
 }
 
 // ── Shutdown ──────────────────────────────────────────────

@@ -6,6 +6,7 @@ handlers can stream them to the browser.
 from __future__ import annotations
 
 import asyncio
+import shutil
 import threading
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from app.jobs import queue as job_queue
 from app.jobs.models import Job
 
 _main_loop: asyncio.AbstractEventLoop | None = None
+_worker_thread: threading.Thread | None = None
+_worker_lock = threading.Lock()
 
 
 def set_event_loop(loop: asyncio.AbstractEventLoop) -> None:
@@ -20,7 +23,7 @@ def set_event_loop(loop: asyncio.AbstractEventLoop) -> None:
     _main_loop = loop
 
 
-def _push(job: Job, pct: int, message: str, stage: str = "") -> None:
+def _push(job: Job, pct: int, message: str, stage: str = "", extra: dict | None = None) -> None:
     if _main_loop is None:
         return
     payload = {
@@ -29,9 +32,12 @@ def _push(job: Job, pct: int, message: str, stage: str = "") -> None:
         "pct": pct,
         "message": message,
     }
+    if extra:
+        payload.update(extra)
     job.pct = pct
     job.message = message
-    asyncio.run_coroutine_threadsafe(job.ws_queue.put(payload), _main_loop)
+    for q in job.record_event(payload):
+        asyncio.run_coroutine_threadsafe(q.put(payload), _main_loop)
 
 
 def _stage_from_pct(pct: int) -> str:
@@ -43,7 +49,14 @@ def _stage_from_pct(pct: int) -> str:
         return "transcribe"
     if pct < 100:
         return "merge"
-    return "done"
+    return "save"
+
+
+def _cleanup_upload(job: Job) -> None:
+    path = Path(job.upload_path)
+    tmp_dir = path.parent
+    if tmp_dir.name.startswith("audiotx_upload_"):
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def _worker_loop() -> None:
@@ -75,50 +88,35 @@ def _worker_loop() -> None:
             )
             job.result_id = result_id
             job.status = "done"
-            _push(job, 100, "Done", stage="done")
-
-            if _main_loop:
-                asyncio.run_coroutine_threadsafe(
-                    job.ws_queue.put({
-                        "job_id": job.id,
-                        "stage": "done",
-                        "pct": 100,
-                        "message": "Transcription complete",
-                        "result_id": result_id,
-                    }),
-                    _main_loop,
-                )
+            _push(
+                job,
+                100,
+                "Transcription complete",
+                stage="done",
+                extra={"result_id": result_id},
+            )
 
         except InterruptedError:
             job.status = "cancelled"
-            if _main_loop:
-                asyncio.run_coroutine_threadsafe(
-                    job.ws_queue.put({
-                        "job_id": job.id,
-                        "stage": "cancelled",
-                        "pct": job.pct,
-                        "message": "Transcription cancelled",
-                    }),
-                    _main_loop,
-                )
+            _push(job, job.pct, "Transcription cancelled", stage="cancelled")
 
         except Exception as exc:
             job.status = "error"
             job.error = str(exc)
-            if _main_loop:
-                asyncio.run_coroutine_threadsafe(
-                    job.ws_queue.put({
-                        "job_id": job.id,
-                        "stage": "error",
-                        "pct": None,
-                        "message": str(exc),
-                        "error": str(exc),
-                    }),
-                    _main_loop,
-                )
+            _push(job, job.pct, str(exc), stage="error", extra={"pct": None, "error": str(exc)})
+        finally:
+            _cleanup_upload(job)
 
 
 def start_worker() -> threading.Thread:
-    t = threading.Thread(target=_worker_loop, daemon=True, name="transcription-worker")
-    t.start()
-    return t
+    global _worker_thread
+    with _worker_lock:
+        if _worker_thread and _worker_thread.is_alive():
+            return _worker_thread
+        _worker_thread = threading.Thread(
+            target=_worker_loop,
+            daemon=True,
+            name="transcription-worker",
+        )
+        _worker_thread.start()
+        return _worker_thread

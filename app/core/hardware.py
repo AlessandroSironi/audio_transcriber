@@ -13,7 +13,7 @@ from typing import Literal
 import psutil
 
 # ---------------------------------------------------------------------------
-# VRAM requirements per model (Whisper + pyannote overhead, in MB)
+# VRAM requirements per model (Whisper + diarization overhead, in MB)
 # ---------------------------------------------------------------------------
 
 MODEL_SIZES: list[str] = [
@@ -25,7 +25,7 @@ MODEL_SIZES: list[str] = [
     "large-v3",
 ]
 
-# (whisper_mb, pyannote_overhead_mb)
+# (whisper_mb, diarization_overhead_mb)
 _MODEL_VRAM: dict[str, tuple[int, int]] = {
     "tiny":           (1_024,  1_024),
     "base":           (1_024,  1_024),

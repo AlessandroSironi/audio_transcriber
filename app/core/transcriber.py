@@ -137,6 +137,9 @@ class MLXWhisperTranscriber:
         model_label = self._model_size
         while not done.wait(timeout=2.0):
             if cancel_event and cancel_event.is_set():
+                if progress:
+                    progress(pct_start + 2, "Cancelling transcription …")
+                done.wait()
                 raise InterruptedError("Job cancelled")
             if progress:
                 elapsed = int(time.monotonic() - start)

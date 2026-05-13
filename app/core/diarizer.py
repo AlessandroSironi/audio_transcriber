@@ -1,7 +1,7 @@
 """
 Speaker diarization using ECAPA-TDNN (SpeechBrain) + silero-vad + spectral clustering.
 
-Improvements over the previous resemblyzer-based stack:
+Improvements over older GE2E-style speaker embedding stacks:
 - ECAPA-TDNN embeddings: ~1% EER vs ~5-8% for GE2E — much better speaker discrimination
 - Sliding-window sub-segmentation: catches speaker changes inside long VAD blocks
 - Spectral clustering with eigengap heuristic: more reliable speaker count estimation
@@ -41,7 +41,8 @@ ProgressCallback = Callable[[int, str], None]
 
 class Diarizer:
     def __init__(self, device: str = "cpu") -> None:
-        self._device = device
+        # Accepted for compatibility with older callers. SpeechBrain ECAPA-TDNN
+        # remains on CPU because MPS support is unstable.
         self._encoder = None
         self._vad_model = None
         self._vad_utils = None
@@ -170,7 +171,11 @@ class Diarizer:
             return np.array([0])
 
         # Affinity matrix: shift cosine similarity to [0, 1]
-        A = (cosine_similarity(X) + 1.0) / 2.0
+        C = cosine_similarity(X)
+        if n == 2:
+            return np.array([0, 0] if C[0, 1] >= 0.70 else [0, 1])
+
+        A = (C + 1.0) / 2.0
         np.fill_diagonal(A, 1.0)
 
         # Eigengap heuristic: find k where λ[k] - λ[k-1] is largest
@@ -178,6 +183,8 @@ class Diarizer:
         eigenvalues = np.sort(np.linalg.eigvalsh(L.toarray() if hasattr(L, "toarray") else L))
         max_k = min(max_speakers, n - 1)
         gaps = np.diff(eigenvalues[1:max_k + 2])  # skip trivial λ₀ ≈ 0
+        if len(gaps) == 0:
+            return np.zeros(n, dtype=int)
         k = int(np.argmax(gaps)) + 2              # +2: 1-indexed, skip λ₀
         k = max(1, min(k, max_speakers, n))
 

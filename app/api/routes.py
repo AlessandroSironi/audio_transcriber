@@ -11,7 +11,6 @@ HTTP endpoints:
   GET  /api/models                   — list Whisper models with download status
   DELETE /api/models/{model_size}    — delete a downloaded Whisper model
   POST /api/setup/check              — ffmpeg + system check
-  POST /api/setup/check-token        — validate HF token
   POST /api/setup/config             — write initial config
 """
 from __future__ import annotations
@@ -19,12 +18,13 @@ from __future__ import annotations
 import shutil
 import tempfile
 import uuid
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 
-from app.config import is_configured, load_settings, save_settings, settings
+from app.config import is_configured, load_settings, save_settings
 from app.core.audio import check_ffmpeg
 from app.core.hardware import inspect_hardware, refresh_hardware
 from app.jobs import queue as job_queue
@@ -32,6 +32,13 @@ from app.jobs.models import Job
 from app.storage.manager import StorageManager
 
 router = APIRouter()
+
+
+def _safe_upload_name(filename: str | None) -> str:
+    name = Path(filename or "audio").name.strip()
+    if name in {"", ".", ".."}:
+        return "audio"
+    return re.sub(r"[^\w .-]", "_", name)[:120] or "audio"
 
 
 # ── Upload ────────────────────────────────────────────────────────────────
@@ -46,7 +53,7 @@ async def upload_audio(file: UploadFile = File(...)):
     # Save upload to a temp location (worker picks it up from there)
     job_id = str(uuid.uuid4())
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"audiotx_upload_{job_id}_"))
-    dest = tmp_dir / (file.filename or "audio")
+    dest = tmp_dir / _safe_upload_name(file.filename)
     with dest.open("wb") as f:
         shutil.copyfileobj(file.file, f)
 
@@ -161,7 +168,10 @@ async def get_transcription_audio(result_id: str):
     from fastapi.responses import FileResponse
     cfg = load_settings()
     storage = StorageManager(cfg.storage_dir)
-    path = storage.audio_path(result_id)
+    try:
+        path = storage.audio_path(result_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Audio not found")
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio not found")
     return FileResponse(path, media_type="audio/wav")
@@ -201,8 +211,7 @@ async def get_settings():
 
 @router.post("/api/settings")
 async def update_settings(body: dict):
-    allowed = {"storage_dir", "whisper_model", "device_override", "host", "port"}
-    data = {k: v for k, v in body.items() if k in allowed}
+    data = _validate_settings_payload(body)
     save_settings(data)
     if "device_override" in data:
         refresh_hardware()
@@ -223,6 +232,52 @@ _MLX_HF_MAP = {
 
 def _dir_size_mb(path: Path) -> int:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) // 1_048_576
+
+
+def _validate_settings_payload(body: dict, *, setup: bool = False) -> dict:
+    from app.core.hardware import MODEL_SIZES
+
+    allowed = {"storage_dir", "whisper_model", "device_override", "host", "port"}
+    data = {k: v for k, v in body.items() if k in allowed}
+
+    if setup:
+        required = {"storage_dir", "whisper_model"}
+        missing = required - data.keys()
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing fields: {sorted(missing)}")
+
+    if "storage_dir" in data:
+        storage_dir = str(data["storage_dir"]).strip()
+        if not storage_dir:
+            raise HTTPException(status_code=422, detail="storage_dir cannot be empty")
+        data["storage_dir"] = storage_dir
+
+    if "whisper_model" in data and data["whisper_model"] not in MODEL_SIZES:
+        raise HTTPException(status_code=422, detail=f"Unknown model size: {data['whisper_model']}")
+
+    if "device_override" in data:
+        override = data["device_override"]
+        if override in ("", None):
+            data["device_override"] = None
+        elif override not in {"cuda", "mps", "cpu"}:
+            raise HTTPException(status_code=422, detail=f"Unknown device override: {override}")
+
+    if "host" in data:
+        host = str(data["host"]).strip()
+        if not host:
+            raise HTTPException(status_code=422, detail="host cannot be empty")
+        data["host"] = host
+
+    if "port" in data:
+        try:
+            port = int(data["port"])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="port must be an integer")
+        if not 1 <= port <= 65535:
+            raise HTTPException(status_code=422, detail="port must be between 1 and 65535")
+        data["port"] = port
+
+    return data
 
 
 def _whisper_cache_entry(model_size: str) -> dict:
@@ -288,11 +343,7 @@ async def shutdown():
 
 @router.post("/api/setup/config")
 async def setup_save_config(body: dict):
-    required = {"storage_dir", "whisper_model"}
-    missing = required - body.keys()
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Missing fields: {missing}")
-    save_settings(body)
+    save_settings(_validate_settings_payload(body, setup=True))
     return {"ok": True}
 
 

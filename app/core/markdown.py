@@ -6,6 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import yaml
+
 
 @dataclass
 class Turn:
@@ -48,16 +50,19 @@ def render_markdown(
 
     lines: list[str] = []
 
-    # YAML front matter
+    front_matter = {
+        "title": title,
+        "date": date_str,
+        "duration": _fmt_duration(total_duration),
+        "speakers": num_speakers,
+        "model": model_name,
+        "device": device_label,
+        "source_audio": source_audio,
+    }
+
     lines += [
         "---",
-        f'title: "{title}"',
-        f'date: "{date_str}"',
-        f'duration: "{_fmt_duration(total_duration)}"',
-        f"speakers: {num_speakers}",
-        f'model: "{model_name}"',
-        f'device: "{device_label}"',
-        f'source_audio: "{source_audio}"',
+        yaml.safe_dump(front_matter, sort_keys=False, allow_unicode=True).strip(),
         "---",
         "",
         f"# Transcription: {title}",

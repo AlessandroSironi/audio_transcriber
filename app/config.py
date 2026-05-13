@@ -15,7 +15,6 @@ DEFAULT_STORAGE = Path.home() / "AudioTranscriptions"
 
 DEFAULTS: dict[str, Any] = {
     "storage_dir": str(DEFAULT_STORAGE),
-    "hf_token": "",
     "whisper_model": "large-v3",
     "device_override": None,
     "host": "0.0.0.0",
@@ -26,7 +25,6 @@ DEFAULTS: dict[str, Any] = {
 @dataclass
 class Settings:
     storage_dir: Path = field(default_factory=lambda: DEFAULT_STORAGE)
-    hf_token: str = ""
     whisper_model: str = "large-v3"
     device_override: str | None = None
     host: str = "0.0.0.0"
@@ -43,7 +41,6 @@ def load_settings() -> Settings:
     storage = Path(str(data.get("storage_dir", DEFAULT_STORAGE))).expanduser().resolve()
     return Settings(
         storage_dir=storage,
-        hf_token=str(data.get("hf_token", "")),
         whisper_model=str(data.get("whisper_model", "large-v3")),
         device_override=data.get("device_override") or None,
         host=str(data.get("host", "0.0.0.0")),
@@ -70,7 +67,3 @@ def save_settings(data: dict[str, Any]) -> None:
 def is_configured() -> bool:
     """Return True if a config file already exists (not first-run)."""
     return CONFIG_PATH.exists()
-
-
-# Module-level singleton — re-load after save_settings if needed
-settings: Settings = load_settings()

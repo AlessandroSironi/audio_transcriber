@@ -29,11 +29,6 @@ def get_job(job_id: str) -> Optional[Job]:
     return _jobs.get(job_id)
 
 
-def all_jobs() -> list[Job]:
-    with _lock:
-        return list(_jobs.values())
-
-
 def next_job_blocking() -> Job:
     """Block until a job_id is available, then return the Job."""
     while True:

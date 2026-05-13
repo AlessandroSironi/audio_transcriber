@@ -15,6 +15,8 @@ from pathlib import Path
 
 import yaml
 
+_RESULT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,180}$")
+
 
 class StorageManager:
     def __init__(self, storage_dir: Path) -> None:
@@ -32,10 +34,10 @@ class StorageManager:
         return f"{ts}_{safe}"
 
     def audio_path(self, result_id: str) -> Path:
-        return self.audio_dir / f"{result_id}.wav"
+        return self.audio_dir / f"{_safe_result_id(result_id)}.wav"
 
     def markdown_path(self, result_id: str) -> Path:
-        return self.trans_dir / f"{result_id}.md"
+        return self.trans_dir / f"{_safe_result_id(result_id)}.md"
 
     # ── Save ─────────────────────────────────────────────────────────────
 
@@ -78,45 +80,60 @@ class StorageManager:
         if not path.exists():
             raise FileNotFoundError(f"Transcription '{result_id}' not found")
         text = path.read_text(encoding="utf-8")
-        if not text.startswith("---"):
+        split = _split_front_matter(text)
+        if split is None:
             raise ValueError("No YAML front matter found")
-        parts = text.split("---", 2)
-        if len(parts) < 3:
-            raise ValueError("Malformed front matter")
-        meta = yaml.safe_load(parts[1]) or {}
-        fm = parts[1]
-        body = parts[2]
+        fm, body = split
+        meta = yaml.safe_load(fm) or {}
         if "title" in updates:
             new_title = str(updates["title"])
             old_title = meta.get("title", "")
-            fm = re.sub(r'^title:.*$', f'title: "{new_title}"', fm, flags=re.MULTILINE)
             body = body.replace(f"# Transcription: {old_title}", f"# Transcription: {new_title}", 1)
             meta["title"] = new_title
         if "date" in updates:
             new_date = str(updates["date"])
-            fm = re.sub(r'^date:.*$', f'date: "{new_date}"', fm, flags=re.MULTILINE)
             meta["date"] = new_date
-        path.write_text(f"---{fm}---{body}", encoding="utf-8")
+        fm_text = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)
+        path.write_text(f"---\n{fm_text}---{body}", encoding="utf-8")
         return meta
 
     def delete(self, result_id: str) -> None:
-        self.markdown_path(result_id).unlink(missing_ok=True)
-        self.audio_path(result_id).unlink(missing_ok=True)
+        try:
+            self.markdown_path(result_id).unlink(missing_ok=True)
+            self.audio_path(result_id).unlink(missing_ok=True)
+        except FileNotFoundError:
+            return
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 def _safe(stem: str) -> str:
-    return re.sub(r"[^\w\-]", "_", stem)[:60]
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", stem)[:60].strip("._-")
+    return safe or "audio"
+
+
+def _safe_result_id(result_id: str) -> str:
+    value = str(result_id)
+    if not _RESULT_ID_RE.fullmatch(value):
+        raise FileNotFoundError(f"Transcription '{result_id}' not found")
+    return value
+
+
+def _split_front_matter(text: str) -> tuple[str, str] | None:
+    if not text.startswith("---"):
+        return None
+    close_idx = text.find("\n---", 3)
+    if close_idx == -1:
+        return None
+    return text[3:close_idx], text[close_idx + 4:]
 
 
 def _parse_front_matter(text: str) -> dict:
-    if not text.startswith("---"):
+    split = _split_front_matter(text)
+    if split is None:
         return {}
-    parts = text.split("---", 2)
-    if len(parts) < 3:
-        return {}
+    fm, _body = split
     try:
-        return yaml.safe_load(parts[1]) or {}
+        return yaml.safe_load(fm) or {}
     except yaml.YAMLError:
         return {}

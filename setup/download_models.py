@@ -14,9 +14,8 @@ ProgressFn = Callable[[str, int, str], None]  # (stage, pct, message)
 def download_all(
     model_size: str = "large-v3",
     progress: ProgressFn | None = None,
-    hf_token: str = "",  # unused — kept for backward compatibility
 ) -> None:
-    """Download resemblyzer + silero-vad diarization models, then Whisper."""
+    """Download ECAPA-TDNN + silero-vad diarization models, then Whisper."""
     _emit(progress, "download", 0, "Starting model download …")
 
     # ── Diarization models (no auth needed) ───────────────────────────────

@@ -31,8 +31,31 @@ class Job:
         default_factory=threading.Event, repr=False, compare=False
     )
 
-    # Per-job asyncio.Queue for streaming progress to WebSocket handlers.
-    ws_queue: asyncio.Queue = field(default_factory=asyncio.Queue, repr=False, compare=False)
+    # Per-connection queues for streaming progress to WebSocket handlers.
+    _ws_queues: list[asyncio.Queue] = field(default_factory=list, repr=False, compare=False)
+    _ws_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    event_history: list[dict] = field(default_factory=list, repr=False, compare=False)
+
+    def add_ws_queue(self) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue()
+        with self._ws_lock:
+            self._ws_queues.append(q)
+        return q
+
+    def remove_ws_queue(self, q: asyncio.Queue) -> None:
+        with self._ws_lock:
+            if q in self._ws_queues:
+                self._ws_queues.remove(q)
+
+    def record_event(self, payload: dict) -> list[asyncio.Queue]:
+        with self._ws_lock:
+            self.event_history.append(dict(payload))
+            self.event_history = self.event_history[-200:]
+            return list(self._ws_queues)
+
+    def last_event(self) -> dict | None:
+        with self._ws_lock:
+            return dict(self.event_history[-1]) if self.event_history else None
 
     def to_dict(self) -> dict:
         return {

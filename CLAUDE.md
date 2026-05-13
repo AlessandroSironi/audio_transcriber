@@ -44,7 +44,7 @@ There are no tests or linters configured.
 1. Browser uploads a file → `POST /api/upload` saves it to a temp dir, creates a `Job` object, puts the job ID in `job_queue._work_queue`.
 2. The single background daemon thread in `app/jobs/worker.py` picks up the job and calls `app/core/pipeline.py:run_pipeline()`.
 3. `run_pipeline` runs five stages sequentially: convert → diarize → transcribe → merge → save. Between every stage it checks `cancel_event` and raises `InterruptedError` if set.
-4. Progress updates travel from the worker thread → `job.ws_queue` (an `asyncio.Queue`) via `asyncio.run_coroutine_threadsafe` — this bridge is necessary because the worker runs in a plain `threading.Thread` while the WebSocket handler is an asyncio coroutine in the main event loop.
+4. Progress updates travel from the worker thread → each subscribed WebSocket queue via `asyncio.run_coroutine_threadsafe` — this bridge is necessary because the worker runs in a plain `threading.Thread` while the WebSocket handler is an asyncio coroutine in the main event loop.
 5. On completion, the markdown and WAV are written to the user-configured storage directory via `app/storage/manager.py`.
 
 ### Pipeline stages (`app/core/pipeline.py`)
@@ -59,7 +59,7 @@ There are no tests or linters configured.
 
 ### Device / backend selection (`app/core/device.py`)
 
-`detect_device()` returns a `DeviceProfile` (NamedTuple: backend, device, compute_type, diarizer_device). Priority: CUDA → MPS+mlx-whisper → MPS+faster-whisper → CPU. Can be overridden via `device_override` in config. `app/core/hardware.py` exposes `inspect_hardware()` (cached with `@lru_cache`) for the `/api/hardware` endpoint and Settings UI.
+`detect_device()` returns a `DeviceProfile` (NamedTuple: backend, device, compute_type, diarizer_device). Priority: CUDA → MPS+mlx-whisper → CPU. CTranslate2/faster-whisper does not support `mps`, so Apple Silicon falls back to CPU unless `mlx-whisper` is installed. Can be overridden via `device_override` in config. `app/core/hardware.py` exposes `inspect_hardware()` (cached with `@lru_cache`) for the `/api/hardware` endpoint and Settings UI.
 
 ### Diarizer (`app/core/diarizer.py`)
 
@@ -112,7 +112,7 @@ Server → client JSON shape:
 { "stage": "cancelled", "pct": 42, "message": "Transcription cancelled" }
 ```
 
-Stage names map to pipeline phases: `convert`, `diarize`, `transcribe`, `merge`, `done`, `error`, `cancelled`. The frontend (`static/app.js`) drives the progress timeline UI from these messages.
+Stage names map to pipeline phases: `convert`, `diarize`, `transcribe`, `merge`, `save`, `done`, `error`, `cancelled`. The frontend (`static/app.js`) drives the progress timeline UI from these messages.
 
 A second WebSocket at `WS /ws/setup/{session_id}` streams model-download progress during first-run setup; `push_setup_progress()` in `app/api/websocket.py` is the bridge from the download thread.
 
@@ -151,7 +151,7 @@ The `result_id` (e.g. `2026-04-21_143022_meeting`) is the shared stem across bot
 
 ### Config
 
-Plain `@dataclass` + YAML, no pydantic. `app/config.py:load_settings()` reads `~/.config/audio_transcriber/config.yaml` and merges with hard-coded defaults. `save_settings(dict)` does a partial merge — only pass the keys you want to change. `settings` module-level singleton is loaded at import time; callers that need fresh values after a save should call `load_settings()` again.
+Plain `@dataclass` + YAML, no pydantic. `app/config.py:load_settings()` reads `~/.config/audio_transcriber/config.yaml` and merges with hard-coded defaults. `save_settings(dict)` does a partial merge — only pass the keys you want to change. Callers should use `load_settings()` when they need current values.
 
 ## Key API endpoints
 
