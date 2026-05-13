@@ -518,8 +518,123 @@ document.addEventListener('keydown', e => {
 let _currentResultId = null;
 let _currentMarkdown = '';
 let _currentMeta = {};
+let _currentAudio   = null;
+let _currentTurns   = [];
+let _lastActiveTurn = -1;
+
+// ── Audio player helpers ──────────────────────────────────
+
+function fmtTime(secs) {
+  secs = Math.floor(secs || 0);
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  const p = n => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${p(m)}:${p(s)}` : `${m}:${p(s)}`;
+}
+
+function wrapTurns(container) {
+  const staticChildren = Array.from(container.childNodes);
+  const turns = [];
+  let current = null;
+  staticChildren.forEach(node => {
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (node.tagName === 'H2') {
+      const m = node.textContent.match(/\[(\d{2}):(\d{2}):(\d{2})\]/);
+      if (m) {
+        const secs = +m[1] * 3600 + +m[2] * 60 + +m[3];
+        current = document.createElement('div');
+        current.className = 'turn';
+        current.dataset.start = secs;
+        container.insertBefore(current, node);
+        turns.push({ el: current, start: secs });
+      }
+    }
+    if (current) current.appendChild(node);
+  });
+  return turns;
+}
+
+function syncHighlight(currentTime) {
+  if (!_currentTurns.length) return;
+  let activeIdx = -1;
+  for (let i = _currentTurns.length - 1; i >= 0; i--) {
+    if (_currentTurns[i].start <= currentTime) { activeIdx = i; break; }
+  }
+  if (activeIdx === _lastActiveTurn) return;
+  _lastActiveTurn = activeIdx;
+  _currentTurns.forEach((t, i) => t.el.classList.toggle('active-turn', i === activeIdx));
+  if (activeIdx >= 0) {
+    _currentTurns[activeIdx].el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function buildAudioPlayer(resultId) {
+  if (_currentAudio) { _currentAudio.pause(); _currentAudio.src = ''; }
+  _lastActiveTurn = -1;
+
+  const audio = new Audio(`/api/transcriptions/${resultId}/audio`);
+  audio.preload = 'metadata';
+  _currentAudio = audio;
+
+  const bar = document.createElement('div');
+  bar.className = 'audio-player';
+  bar.id = 'audio-player-bar';
+  bar.innerHTML = `
+    <button class="ap-btn" id="ap-play" title="Play / Pause">&#9654;</button>
+    <span   class="ap-time" id="ap-cur">0:00</span>
+    <input  class="ap-seek" id="ap-seek" type="range" min="0" step="0.1" value="0">
+    <span   class="ap-time" id="ap-dur">0:00</span>
+    <select class="ap-speed" id="ap-speed">
+      <option value="0.5">0.5&times;</option>
+      <option value="0.75">0.75&times;</option>
+      <option value="1" selected>1&times;</option>
+      <option value="1.25">1.25&times;</option>
+      <option value="1.5">1.5&times;</option>
+      <option value="2">2&times;</option>
+    </select>
+  `;
+
+  const playBtn  = bar.querySelector('#ap-play');
+  const curEl    = bar.querySelector('#ap-cur');
+  const seekEl   = bar.querySelector('#ap-seek');
+  const durEl    = bar.querySelector('#ap-dur');
+  const speedSel = bar.querySelector('#ap-speed');
+
+  audio.addEventListener('loadedmetadata', () => {
+    seekEl.max = audio.duration;
+    durEl.textContent = fmtTime(audio.duration);
+  });
+  audio.addEventListener('timeupdate', () => {
+    if (!seekEl._dragging) seekEl.value = audio.currentTime;
+    curEl.textContent = fmtTime(audio.currentTime);
+    syncHighlight(audio.currentTime);
+  });
+  audio.addEventListener('play',  () => { playBtn.innerHTML = '&#9646;&#9646;'; });
+  audio.addEventListener('pause', () => { playBtn.innerHTML = '&#9654;'; });
+  audio.addEventListener('ended', () => { playBtn.innerHTML = '&#9654;'; _lastActiveTurn = -1; });
+  audio.addEventListener('error', () => { bar.style.display = 'none'; });
+
+  playBtn.addEventListener('click', () => { audio.paused ? audio.play() : audio.pause(); });
+
+  seekEl.addEventListener('mousedown',  () => { seekEl._dragging = true; });
+  seekEl.addEventListener('touchstart', () => { seekEl._dragging = true; });
+  seekEl.addEventListener('input',      () => { curEl.textContent = fmtTime(+seekEl.value); });
+  seekEl.addEventListener('change',     () => { audio.currentTime = +seekEl.value; seekEl._dragging = false; });
+
+  speedSel.addEventListener('change', () => { audio.playbackRate = +speedSel.value; });
+
+  return bar;
+}
 
 async function openViewer(resultId) {
+  // Tear down any running audio from a previous transcription
+  if (_currentAudio) { _currentAudio.pause(); _currentAudio.src = ''; _currentAudio = null; }
+  _currentTurns   = [];
+  _lastActiveTurn = -1;
+  const stalePlayer = document.getElementById('audio-player-bar');
+  if (stalePlayer) stalePlayer.remove();
+
   _currentResultId = resultId;
   showTab('viewer');
   document.getElementById('viewer-tab-btn').style.display = '';
@@ -570,6 +685,23 @@ function renderViewer(meta, markdown) {
     }
   } catch (e) {
     container.innerHTML = `<pre style="white-space:pre-wrap;font-size:.88rem">${escHtml(body)}</pre>`;
+  }
+
+  // Wrap turns and build player before color-coding (wrapTurns moves h2s into .turn divs)
+  _currentTurns   = wrapTurns(container);
+  _lastActiveTurn = -1;
+
+  _currentTurns.forEach(({ el, start }) => {
+    el.addEventListener('click', () => {
+      if (_currentAudio) { _currentAudio.currentTime = start; _currentAudio.play(); }
+    });
+  });
+
+  const existingPlayer = document.getElementById('audio-player-bar');
+  if (existingPlayer) existingPlayer.remove();
+  if (_currentTurns.length) {
+    const playerEl = buildAudioPlayer(_currentResultId);
+    container.parentElement.insertBefore(playerEl, container);
   }
 
   // Color-code speaker headings

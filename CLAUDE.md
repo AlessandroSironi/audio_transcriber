@@ -44,7 +44,7 @@ There are no tests or linters configured.
 1. Browser uploads a file → `POST /api/upload` saves it to a temp dir, creates a `Job` object, puts the job ID in `job_queue._work_queue`.
 2. The single background daemon thread in `app/jobs/worker.py` picks up the job and calls `app/core/pipeline.py:run_pipeline()`.
 3. `run_pipeline` runs five stages sequentially: convert → diarize → transcribe → merge → save. Between every stage it checks `cancel_event` and raises `InterruptedError` if set.
-4. Progress updates travel from the worker thread → `job.ws_queue` (an `asyncio.Queue`) via `asyncio.run_coroutine_threadsafe` → the WebSocket handler at `WS /ws/{job_id}` → browser.
+4. Progress updates travel from the worker thread → `job.ws_queue` (an `asyncio.Queue`) via `asyncio.run_coroutine_threadsafe` — this bridge is necessary because the worker runs in a plain `threading.Thread` while the WebSocket handler is an asyncio coroutine in the main event loop.
 5. On completion, the markdown and WAV are written to the user-configured storage directory via `app/storage/manager.py`.
 
 ### Pipeline stages (`app/core/pipeline.py`)
@@ -72,6 +72,36 @@ Whisper model cache: `~/.cache/huggingface/hub/models--{org}--{name}/`
 
 `build_transcriber(model_size, profile)` returns either `MLXWhisperTranscriber` or `FasterWhisperTranscriber`. The MLX variant calls `mlx_whisper.transcribe()` with a HF repo ID; the faster-whisper variant uses CTranslate2. Both check `cancel_event` per segment and raise `InterruptedError` on cancellation.
 
+### Markdown output format
+
+`app/core/markdown.py:render_markdown()` produces files with this structure:
+
+```
+---
+title: "stem"
+date: "2026-04-21T14:30:22"
+duration: "00:42:11"
+speakers: 2
+model: "large-v3"
+device: "mlx-whisper (mps)"
+source_audio: "/abs/path/to/audio/2026-04-21_143022_stem.wav"
+---
+
+# Transcription: stem
+
+---
+
+## [00:00:04] Speaker 1
+
+text of turn …
+
+## [00:01:22] Speaker 2
+
+text of turn …
+```
+
+`source_audio` in the front matter is the **absolute path** to the stored WAV file. Turn headings follow the pattern `## [HH:MM:SS] Speaker N` — the timestamp is the start time of that speaker turn in `HH:MM:SS` format.
+
 ### WebSocket protocol
 
 Server → client JSON shape:
@@ -84,11 +114,21 @@ Server → client JSON shape:
 
 Stage names map to pipeline phases: `convert`, `diarize`, `transcribe`, `merge`, `done`, `error`, `cancelled`. The frontend (`static/app.js`) drives the progress timeline UI from these messages.
 
+A second WebSocket at `WS /ws/setup/{session_id}` streams model-download progress during first-run setup; `push_setup_progress()` in `app/api/websocket.py` is the bridge from the download thread.
+
 ### Frontend
 
 Single-page app served from `app/templates/index.html`. All logic is in `static/app.js` (vanilla JS, no framework). The setup wizard is a separate page at `/setup` served from `app/templates/setup.html` with `static/setup.js`. `marked.js` (bundled locally at `static/marked.min.js`) renders transcription markdown in the Viewer tab.
 
-Key JS globals: `_hwData` (hardware info), `_selectedModel` (settings), `activeJobId` (in-progress job). `stripFrontMatter(text)` strips YAML front matter before passing to `marked.parse()` — uses `indexOf('\n---', 3)` rather than `split('---', 3)` to avoid truncating content that contains `---` horizontal rules.
+Key JS module-level state:
+- `activeJobId` — job currently running (upload tab)
+- `_currentResultId`, `_currentMarkdown`, `_currentMeta` — transcription open in viewer tab
+- `_hwData`, `_selectedModel` — hardware info and selected Whisper model (settings tab)
+- `_txList`, `_sortKey`, `_sortDir` — library list and sort state
+
+`stripFrontMatter(text)` strips YAML front matter before passing to `marked.parse()` — uses `indexOf('\n---', 3)` rather than `split('---', 3)` to avoid truncating content that contains `---` horizontal rules.
+
+Speaker headings (`h2`) in the viewer are color-coded using `SP_HUES = [240, 287, 340, 28, 75, 170, 200, 55]` (one hue per speaker index) and CSS variables `--sp1`–`--sp8` defined in `static/style.css`.
 
 ### Storage layout
 
@@ -113,9 +153,13 @@ Plain `@dataclass` + YAML, no pydantic. `app/config.py:load_settings()` reads `~
 | POST | `/api/jobs/{id}/cancel` | Set `cancel_event` |
 | WS | `/ws/{job_id}` | Stream progress |
 | GET | `/api/transcriptions` | List library |
-| GET/DELETE | `/api/transcriptions/{id}` | View / delete |
+| GET | `/api/transcriptions/{id}` | Markdown content + parsed metadata |
+| PATCH | `/api/transcriptions/{id}` | Update `title` and/or `date` in front matter |
+| DELETE | `/api/transcriptions/{id}` | Delete markdown + WAV |
 | GET | `/api/hardware` | Cached hardware info |
 | GET/DELETE | `/api/models` `/api/models/{size}` | Model download status / delete |
 | GET/POST | `/api/settings` | Read / write config |
 | GET | `/api/system` | Live CPU/RAM/GPU stats |
 | POST | `/api/shutdown` | SIGTERM with 350ms delay |
+| POST | `/api/setup/download` | Kick off model download; progress via WS |
+| WS | `/ws/setup/{session_id}` | Stream model-download progress |

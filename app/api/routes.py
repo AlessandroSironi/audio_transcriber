@@ -156,6 +156,17 @@ async def update_transcription(result_id: str, body: dict):
         raise HTTPException(status_code=422, detail=str(e))
 
 
+@router.get("/api/transcriptions/{result_id}/audio")
+async def get_transcription_audio(result_id: str):
+    from fastapi.responses import FileResponse
+    cfg = load_settings()
+    storage = StorageManager(cfg.storage_dir)
+    path = storage.audio_path(result_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audio not found")
+    return FileResponse(path, media_type="audio/wav")
+
+
 @router.delete("/api/transcriptions/{result_id}")
 async def delete_transcription(result_id: str):
     cfg = load_settings()
