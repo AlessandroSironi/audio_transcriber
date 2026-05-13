@@ -123,12 +123,21 @@ Single-page app served from `app/templates/index.html`. All logic is in `static/
 Key JS module-level state:
 - `activeJobId` — job currently running (upload tab)
 - `_currentResultId`, `_currentMarkdown`, `_currentMeta` — transcription open in viewer tab
+- `_currentAudio`, `_currentTurns`, `_lastActiveTurn` — audio player state (viewer tab)
 - `_hwData`, `_selectedModel` — hardware info and selected Whisper model (settings tab)
 - `_txList`, `_sortKey`, `_sortDir` — library list and sort state
 
 `stripFrontMatter(text)` strips YAML front matter before passing to `marked.parse()` — uses `indexOf('\n---', 3)` rather than `split('---', 3)` to avoid truncating content that contains `---` horizontal rules.
 
 Speaker headings (`h2`) in the viewer are color-coded using `SP_HUES = [240, 287, 340, 28, 75, 170, 200, 55]` (one hue per speaker index) and CSS variables `--sp1`–`--sp8` defined in `static/style.css`.
+
+### Audio player (`static/app.js`)
+
+After `marked.parse()`, `renderViewer()` calls `wrapTurns(container)` which walks the rendered DOM and wraps each `## [HH:MM:SS] Speaker N` heading plus its following paragraph(s) into a `<div class="turn" data-start="{seconds}">`. The static `Array.from(container.childNodes)` snapshot is taken before any moves so the iteration is safe while nodes are being reparented.
+
+`buildAudioPlayer(resultId)` creates the sticky player bar (injected between `viewer-meta-strip` and `viewer-body`), constructs an `<audio>` element pointing at `GET /api/transcriptions/{id}/audio`, and wires all events. `syncHighlight(currentTime)` is called on every `timeupdate` but only touches the DOM when `_lastActiveTurn` changes index, keeping it cheap.
+
+Cleanup on navigation: `openViewer()` pauses and nulls `_currentAudio`, clears `_currentTurns`, and removes the player bar before loading a new transcription.
 
 ### Storage layout
 
@@ -156,6 +165,7 @@ Plain `@dataclass` + YAML, no pydantic. `app/config.py:load_settings()` reads `~
 | GET | `/api/transcriptions/{id}` | Markdown content + parsed metadata |
 | PATCH | `/api/transcriptions/{id}` | Update `title` and/or `date` in front matter |
 | DELETE | `/api/transcriptions/{id}` | Delete markdown + WAV |
+| GET | `/api/transcriptions/{id}/audio` | Stream the stored WAV (supports Range requests) |
 | GET | `/api/hardware` | Cached hardware info |
 | GET/DELETE | `/api/models` `/api/models/{size}` | Model download status / delete |
 | GET/POST | `/api/settings` | Read / write config |
