@@ -69,10 +69,10 @@ def _worker_loop() -> None:
         job.status = "running"
         _push(job, 0, "Starting …")
 
-        try:
-            settings = load_settings()
-            storage = StorageManager(settings.storage_dir)
+        settings = load_settings()
+        storage = StorageManager(settings.storage_dir)
 
+        try:
             def progress(pct: int, message: str) -> None:
                 _push(job, pct, message)
 
@@ -105,6 +105,7 @@ def _worker_loop() -> None:
             job.error = str(exc)
             _push(job, job.pct, str(exc), stage="error", extra={"pct": None, "error": str(exc)})
         finally:
+            storage.record_job(job.to_dict())
             _cleanup_upload(job)
 
 

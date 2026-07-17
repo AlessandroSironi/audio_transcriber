@@ -12,7 +12,7 @@ from typing import Callable
 
 from app.core.audio import convert_to_wav, make_temp_dir, cleanup_temp_dir
 from app.core.diarizer import Diarizer
-from app.core.markdown import merge_segments, render_markdown
+from app.core.markdown import build_metadata, merge_segments, render_markdown
 from app.core.transcriber import build_transcriber
 from app.core.device import detect_device
 from app.storage.manager import StorageManager
@@ -104,7 +104,7 @@ def _pipeline(
     result_id = storage.make_result_id(stem)
     saved_wav = storage.audio_path(result_id)
 
-    md_text = render_markdown(
+    metadata = build_metadata(
         turns=turns,
         title=stem,
         model_name=model_size,
@@ -112,8 +112,9 @@ def _pipeline(
         source_audio=str(saved_wav),
         recorded_at=datetime.now(),
     )
+    md_text = render_markdown(turns, metadata)
 
-    storage.save(result_id, wav_path, md_text)
+    storage.save(result_id, wav_path, md_text, metadata, turns)
     progress(100, "Done")
 
     return result_id

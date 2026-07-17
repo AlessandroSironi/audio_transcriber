@@ -31,14 +31,14 @@ def _fmt_timestamp(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-def render_markdown(
+def build_metadata(
     turns: list[Turn],
     title: str,
     model_name: str,
     device_label: str,
     source_audio: str,
     recorded_at: datetime | None = None,
-) -> str:
+) -> dict:
     if not turns:
         total_duration = 0.0
     else:
@@ -48,9 +48,7 @@ def render_markdown(
     num_speakers = len(speaker_set)
     date_str = (recorded_at or datetime.now()).isoformat(timespec="seconds")
 
-    lines: list[str] = []
-
-    front_matter = {
+    return {
         "title": title,
         "date": date_str,
         "duration": _fmt_duration(total_duration),
@@ -60,9 +58,12 @@ def render_markdown(
         "source_audio": source_audio,
     }
 
-    lines += [
+
+def render_markdown(turns: list[Turn], metadata: dict) -> str:
+    title = metadata["title"]
+    lines: list[str] = [
         "---",
-        yaml.safe_dump(front_matter, sort_keys=False, allow_unicode=True).strip(),
+        yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True).strip(),
         "---",
         "",
         f"# Transcription: {title}",

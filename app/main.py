@@ -42,6 +42,14 @@ async def lifespan(app: FastAPI):
     loop = asyncio.get_event_loop()
     job_worker.set_event_loop(loop)
     job_worker.start_worker()
+
+    if is_configured():
+        from app.config import load_settings
+        from app.storage.manager import StorageManager
+
+        storage = StorageManager(load_settings().storage_dir)
+        storage.migrate_legacy_markdown()
+
     yield
 
 

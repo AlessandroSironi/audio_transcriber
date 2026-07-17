@@ -64,6 +64,7 @@ async def upload_audio(file: UploadFile = File(...)):
         model_size=cfg.whisper_model,
     )
     job_queue.register(job)
+    StorageManager(cfg.storage_dir).record_job(job.to_dict())
     job_queue.enqueue(job_id)
 
     return JSONResponse(status_code=202, content={"job_id": job_id})

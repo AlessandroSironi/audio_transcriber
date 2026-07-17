@@ -1,21 +1,24 @@
 """
-Storage manager — handles all file I/O outside the project folder.
+Storage manager — handles all file I/O and DB access outside the project folder.
 
 Layout:
   {storage_dir}/
-    audio/          YYYY-MM-DD_HHMMSS_sanitized_stem.wav
-    transcriptions/ YYYY-MM-DD_HHMMSS_sanitized_stem.md
+    audio/                 YYYY-MM-DD_HHMMSS_sanitized_stem.wav
+    transcriptions/        legacy *.md files (pre-SQLite); migrated on startup
+    audio_transcriber.db   SQLite DB — transcription metadata/text + job history
 """
 from __future__ import annotations
 
 import re
-import shutil
 from datetime import datetime
 from pathlib import Path
 
 import yaml
 
+from app.storage import db
+
 _RESULT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,180}$")
+_TURN_HEADING_RE = re.compile(r"^## \[(\d{2}):(\d{2}):(\d{2})\] (.+)$")
 
 
 class StorageManager:
@@ -25,6 +28,8 @@ class StorageManager:
         self.trans_dir = self.root / "transcriptions"
         self.audio_dir.mkdir(parents=True, exist_ok=True)
         self.trans_dir.mkdir(parents=True, exist_ok=True)
+        self.db_path = self.root / "audio_transcriber.db"
+        db.init_db(self.db_path)
 
     # ── Naming ────────────────────────────────────────────────────────────
 
@@ -36,73 +41,77 @@ class StorageManager:
     def audio_path(self, result_id: str) -> Path:
         return self.audio_dir / f"{_safe_result_id(result_id)}.wav"
 
-    def markdown_path(self, result_id: str) -> Path:
-        return self.trans_dir / f"{_safe_result_id(result_id)}.md"
-
     # ── Save ─────────────────────────────────────────────────────────────
 
-    def save(self, result_id: str, wav_path: Path, markdown_text: str) -> None:
+    def save(self, result_id: str, wav_path: Path, markdown_text: str, metadata: dict, turns: list) -> None:
+        import shutil
         shutil.copy2(wav_path, self.audio_path(result_id))
-        self.markdown_path(result_id).write_text(markdown_text, encoding="utf-8")
+        db.insert_transcription(self.db_path, result_id, metadata, markdown_text, turns)
 
     # ── Read ──────────────────────────────────────────────────────────────
 
     def read_markdown(self, result_id: str) -> str:
-        path = self.markdown_path(result_id)
-        if not path.exists():
+        row = db.get_transcription(self.db_path, _safe_result_id(result_id))
+        if row is None:
             raise FileNotFoundError(f"Transcription '{result_id}' not found")
-        return path.read_text(encoding="utf-8")
+        return row["markdown"]
 
     def get_metadata(self, result_id: str) -> dict:
-        """Parse YAML front matter from a transcription file."""
-        path = self.markdown_path(result_id)
-        if not path.exists():
+        row = db.get_transcription(self.db_path, _safe_result_id(result_id))
+        if row is None:
             return {}
-        text = path.read_text(encoding="utf-8")
-        return _parse_front_matter(text)
+        row.pop("markdown", None)
+        row.pop("created_at", None)
+        row.pop("updated_at", None)
+        return row
 
     # ── List ──────────────────────────────────────────────────────────────
 
     def list_transcriptions(self) -> list[dict]:
         """Return metadata dicts for all transcriptions, newest first."""
-        results = []
-        for md_file in sorted(self.trans_dir.glob("*.md"), reverse=True):
-            result_id = md_file.stem
-            meta = _parse_front_matter(md_file.read_text(encoding="utf-8"))
-            meta["result_id"] = result_id
-            meta.setdefault("title", result_id)
-            results.append(meta)
+        results = db.list_transcriptions(self.db_path)
+        for meta in results:
+            meta.setdefault("title", meta["result_id"])
         return results
 
     def update_metadata(self, result_id: str, updates: dict) -> dict:
-        """Update title and/or date in the YAML front matter (in-place)."""
-        path = self.markdown_path(result_id)
-        if not path.exists():
-            raise FileNotFoundError(f"Transcription '{result_id}' not found")
-        text = path.read_text(encoding="utf-8")
-        split = _split_front_matter(text)
-        if split is None:
-            raise ValueError("No YAML front matter found")
-        fm, body = split
-        meta = yaml.safe_load(fm) or {}
-        if "title" in updates:
-            new_title = str(updates["title"])
-            old_title = meta.get("title", "")
-            body = body.replace(f"# Transcription: {old_title}", f"# Transcription: {new_title}", 1)
-            meta["title"] = new_title
-        if "date" in updates:
-            new_date = str(updates["date"])
-            meta["date"] = new_date
-        fm_text = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)
-        path.write_text(f"---\n{fm_text}---{body}", encoding="utf-8")
-        return meta
+        """Update title and/or date for a transcription (in the DB)."""
+        return db.update_transcription(self.db_path, _safe_result_id(result_id), updates)
 
     def delete(self, result_id: str) -> None:
-        try:
-            self.markdown_path(result_id).unlink(missing_ok=True)
-            self.audio_path(result_id).unlink(missing_ok=True)
-        except FileNotFoundError:
-            return
+        safe_id = _safe_result_id(result_id)
+        db.delete_transcription(self.db_path, safe_id)
+        self.audio_path(result_id).unlink(missing_ok=True)
+
+    # ── Job history ───────────────────────────────────────────────────────
+
+    def record_job(self, job: dict) -> None:
+        db.upsert_job(self.db_path, job)
+
+    # ── Legacy migration ──────────────────────────────────────────────────
+
+    def migrate_legacy_markdown(self) -> int:
+        """
+        Import pre-SQLite *.md files (with WAV counterparts) into the DB.
+        Idempotent: skips any result_id already present in `transcriptions`.
+        Leaves the original .md files on disk untouched.
+        """
+        migrated = 0
+        for md_file in sorted(self.trans_dir.glob("*.md")):
+            result_id = md_file.stem
+            if not _RESULT_ID_RE.fullmatch(result_id):
+                continue
+            if db.get_transcription(self.db_path, result_id) is not None:
+                continue
+            text = md_file.read_text(encoding="utf-8")
+            meta = _parse_front_matter(text)
+            if not meta:
+                continue
+            meta.setdefault("title", result_id)
+            turns = _parse_turns(text, meta.get("duration"))
+            db.insert_transcription(self.db_path, result_id, meta, text, turns)
+            migrated += 1
+        return migrated
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -137,3 +146,49 @@ def _parse_front_matter(text: str) -> dict:
         return yaml.safe_load(fm) or {}
     except yaml.YAMLError:
         return {}
+
+
+def _duration_to_seconds(duration: str | None) -> float:
+    if not duration:
+        return 0.0
+    parts = [int(p) for p in duration.split(":")]
+    while len(parts) < 3:
+        parts.insert(0, 0)
+    h, m, s = parts[-3:]
+    return h * 3600 + m * 60 + s
+
+
+class _LegacyTurn:
+    __slots__ = ("speaker_label", "start", "end", "text")
+
+    def __init__(self, speaker_label: str, start: float, end: float, text: str) -> None:
+        self.speaker_label = speaker_label
+        self.start = start
+        self.end = end
+        self.text = text
+
+
+def _parse_turns(text: str, duration: str | None) -> list:
+    """Best-effort recovery of turns from rendered markdown for migration.
+    Only the start time of each turn is stored in the file, so end_seconds
+    is approximated (next turn's start, or total duration for the last turn).
+    """
+    split = _split_front_matter(text)
+    body = split[1] if split else text
+
+    raw: list[tuple[float, str, list[str]]] = []
+    for line in body.splitlines():
+        m = _TURN_HEADING_RE.match(line)
+        if m:
+            h, mi, s, speaker = m.groups()
+            start = int(h) * 3600 + int(mi) * 60 + int(s)
+            raw.append((float(start), speaker, []))
+        elif raw and line.strip() and not line.startswith("#"):
+            raw[-1][2].append(line.strip())
+
+    total = _duration_to_seconds(duration)
+    turns: list[_LegacyTurn] = []
+    for i, (start, speaker, text_lines) in enumerate(raw):
+        end = raw[i + 1][0] if i + 1 < len(raw) else max(start, total)
+        turns.append(_LegacyTurn(speaker, start, end, " ".join(text_lines)))
+    return turns
