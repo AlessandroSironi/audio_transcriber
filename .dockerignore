@@ -1,0 +1,17 @@
+.git
+.gitignore
+.claude
+__pycache__
+**/__pycache__
+*.py[cod]
+*.egg-info
+.eggs
+.venv
+venv
+env
+docs
+AudioTranscriptions
+.DS_Store
+.vscode
+.idea
+*.swp

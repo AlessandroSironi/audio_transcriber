@@ -1,0 +1,33 @@
+services:
+  audio-transcriber:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - audiotx-data:/data
+    restart: unless-stopped
+
+  # NVIDIA GPU variant — requires the NVIDIA Container Toolkit on the host.
+  # Run with: docker compose --profile gpu up --build audio-transcriber-cuda
+  audio-transcriber-cuda:
+    profiles: ["gpu"]
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+    ports:
+      - "8000:8000"
+    volumes:
+      - audiotx-data:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: ["gpu"]
+    restart: unless-stopped
+
+volumes:
+  audiotx-data:
